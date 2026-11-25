@@ -57,7 +57,7 @@ Click its icon for:
 
 - **Brightness** slider (5–150%), saved
 - **Pause / Resume**, saved
-- **Scene**: all five in turn, or stay on one
+- **Scene**: all ten in turn, or stay on one
 - **Start at login**: adds or removes `Aether` under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 - **Reload**, **Open log folder**, **Exit**

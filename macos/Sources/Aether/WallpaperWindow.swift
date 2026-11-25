@@ -197,7 +197,7 @@ final class WallpaperWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
           var f = !!g.getExtension('EXT_color_buffer_float');
           var r = g.getParameter(g.RENDERER);
           var lose = g.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
-          return 'WebGL2 (' + r + '), float render targets: ' + (f ? 'yes, all five scenes' : 'no, Nebula and Julia only');
+          return 'WebGL2 (' + r + '), float render targets: ' + (f ? 'yes, all ten scenes' : 'no, Nebula and Julia only');
         })()
         """
         webView.evaluateJavaScript(js) { [weak self] result, error in

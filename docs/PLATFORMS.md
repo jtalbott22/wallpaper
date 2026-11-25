@@ -23,13 +23,17 @@ hosts, so both platforms use that page and only need a thin native wrapper.
   At 0 it fades out and stops drawing, so a paused wallpaper costs nothing.
 - It caps itself at 30 fps, pauses when the page is hidden, and lowers its
   resolution if the GPU can't keep up.
-- Five scenes: Nebula, Julia, Reaction, Physarum and Attractor. Reaction,
-  Physarum and Attractor need `EXT_color_buffer_float`. Without it, the page
-  shows only Nebula and Julia.
+- All ten scenes, like Linux: Nebula, Julia, Reaction, Physarum, Attractor,
+  Silk, Chaos, Galaxy, Ink and Particle Life. (A page background built on
+  `aether-bg.js` shows only the first five unless its canvas has
+  `data-scenes="all"`.) Every scene but Nebula and Julia needs
+  `EXT_color_buffer_float`; without it, the page shows only those two.
+  `?aether=` takes nebula, julia, reaction, physarum, attractor, silk,
+  chaos, galaxy, ink or life.
 
 Runs in WebView2 on Windows 11 (the native host in `windows/`) and in
 WKWebView on macOS 26 (the native host in `macos/`), both with
-`EXT_color_buffer_float`, so all five scenes, and in headless Chromium on
+`EXT_color_buffer_float`, so all ten scenes, and in headless Chromium on
 Linux.
 
 ## Try it now, no code
