@@ -159,7 +159,7 @@ mouse (the desktop window doesn't receive pointer events).
 ## Windows
 
 On Windows, a small native host (`windows/`, C# / .NET 8 with WebView2) runs
-the [web version](#on-the-web) — all ten scenes — behind the desktop
+the [web version](#on-the-web) — all ten scenes plus [six more](#more-scenes-on-windows-and-macos) — behind the desktop
 icons on every monitor.
 
 **1. Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)**
@@ -186,7 +186,7 @@ for building from source, options and troubleshooting.
 ## macOS
 
 On macOS, a small native host (`macos/`, Swift with WKWebView) runs the
-[web version](#on-the-web) — all ten scenes — as the desktop
+[web version](#on-the-web) — all ten scenes plus [six more](#more-scenes-on-windows-and-macos) — as the desktop
 background, under the icons, on every screen and every Space.
 
 **1. Install the Swift tools** if you don't have Xcode: `xcode-select --install`.
@@ -203,11 +203,42 @@ login. Run the script again to update; `--uninstall` removes it. An app you
 built yourself opens normally; if you copy it to another Mac, allow it once
 in System Settings › Privacy & Security (**Open Anyway**).
 
-Its menu bar item has a brightness slider, pause and resume, a scene picker
-and "Open at Login". It pauses on its own on any screen whose desktop is fully
-covered (including by fullscreen apps), while the screen is locked or asleep,
-and in Low Power Mode. See [macos/README.md](macos/README.md) for building
-from source, options and troubleshooting.
+Its menu bar item has a brightness slider, pause and resume, a scene picker,
+a **Quality** setting, **Show the Math (?)** and "Open at Login". It pauses on
+its own on any screen whose desktop is fully covered (including by fullscreen
+apps), while the screen is locked or asleep, and in Low Power Mode. See
+[macos/README.md](macos/README.md) for building from source, options and
+troubleshooting.
+
+### More scenes on Windows and macOS
+
+The web version, and so both desktop hosts, has six scenes the Linux renderer
+doesn't:
+
+| Scene | What it simulates |
+|---|---|
+| **Cymatics** | sand on a vibrating plate or drum (one note of a steelpan behaves much like one), gathering on the nodal lines of each mode: Chladni figures |
+| **Turing** | Jonathan McCabe's multi-scale Turing patterns: five activator–inhibitor pairs per pixel, the best-agreeing scale wins |
+| **Free Energy** | Karl Friston's primordial soup: particles with Lorenz-attractor chemistry self-assemble into bodies wrapped in a Markov blanket |
+| **Cosmos** | the cosmic web forming under gravity, solved particle-mesh style (Poisson's equation on a grid) |
+| **Liquid** | a FLIP/PIC particle fluid sloshing in a rocking tank |
+| **Mandelbulb** | a ray-marched 3D fractal with soft shadows (High and Maximum quality only) |
+
+Chaos also gained the Chen, Four-Wing and Sprott B attractors, and Reaction
+sometimes uses Karl Sims's "orientation" variant, with diffusion that streams
+along a flowing direction field.
+
+**The math.** When a scene starts, a small card fades in with its equations,
+a line on what they mean and who first described them, then fades away.
+**Show the Math (?)** in the menu brings it back for whatever is showing.
+
+**Quality.** Battery Saver and Balanced run at 30 fps; High and Maximum run at
+60 fps and add ray marching (shadows across Reaction and Turing, the
+Mandelbulb, more samples on Julia). On every setting each scene gets its own
+resolution: it rises while frames arrive on time and drops when they don't, and
+a scene that stutters hands over to the next one early, so motion stays smooth.
+The wallpaper also gets anti-aliasing (FXAA), bloom, sharpening and a richer
+colour grade.
 
 ## How-tos
 
@@ -325,11 +356,13 @@ python3 -m aether --sheet x.png --scene "Name"
 
 ## On the web
 
-[`web/aether-bg.js`](web/aether-bg.js) is a WebGL2 port of all ten scenes
-made to sit behind a web page as a slow, subtle background. It's one 90 KB
+[`web/aether-bg.js`](web/aether-bg.js) is a WebGL2 port of all ten scenes,
+plus six newer ones, made to sit behind a web page as a slow, subtle background. It's one 150 KB
 file with no dependencies. As a page background it shows the calmer five
 (Nebula, Julia, Reaction, Physarum and Attractor); add `data-scenes="all"` to
-the canvas for all ten, as the desktop wallpaper page does. WebGL2 has no
+the canvas for all of them, as the desktop wallpaper page does. The wallpaper page also sets
+`data-quality` (adaptive resolution, anti-aliasing, bloom and the colour grade) and shows
+each scene's math. WebGL2 has no
 compute shaders, so the particle scenes keep their particles in float
 textures, move them in fragment shaders and draw them as points. You can see it live on
 [joshuaallentalbott.com](https://joshuaallentalbott.com/), where it defaults to 20%.
@@ -418,7 +451,8 @@ on `window` whenever a new scene starts.
 **Show one scene**
 
 Add `?aether=physarum` (or `nebula`, `julia`, `reaction`, `attractor`, `silk`,
-`chaos`, `galaxy`, `ink`, `life`) to the
+`chaos`, `galaxy`, `ink`, `life`, `cymatics`, `turing`, `soup`, `cosmos`,
+`liquid`, `bulb`) to the
 page URL to stay on one scene, which is handy for screenshots.
 
 ## How it was made
@@ -593,7 +627,7 @@ aether/                GPU renderer
   headless.py          surfaceless EGL context for previews and benchmarks
   preview.py           --preview, --sheet and --bench
   scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
-web/aether-bg.js       WebGL2 port for web pages and the Windows and macOS hosts (10 scenes)
+web/aether-bg.js       WebGL2 port for web pages and the Windows and macOS hosts (16 scenes)
 web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
 web/aether.html        interactive full-screen page: scenes, speed, zoom, snapshots
 windows/               native Windows host: WebView2 behind the desktop icons (C#, .NET 8)

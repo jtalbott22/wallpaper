@@ -16,6 +16,8 @@ sealed class HostContext : ApplicationContext
     {
         ("nebula", "Nebula"), ("julia", "Julia"), ("reaction", "Reaction"), ("physarum", "Physarum"), ("attractor", "Attractor"),
         ("silk", "Silk"), ("chaos", "Chaos"), ("galaxy", "Galaxy"), ("ink", "Ink"), ("life", "Particle Life"),
+        ("cymatics", "Cymatics"), ("turing", "Turing"), ("soup", "Free Energy"), ("cosmos", "Cosmos"), ("liquid", "Liquid"),
+        ("bulb", "Mandelbulb"),
     };
 
     readonly Settings settings = Settings.Load();
