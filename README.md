@@ -2,17 +2,21 @@
 
 # Aether
 
+*Started with an inkling.*
+
 **A GPU live wallpaper of particles, fluids and fractals that never repeats.**
 
 <img src="docs/screenshots/hero.webp" alt="Aether drifting from Particle Life into Silk, Reaction and Galaxy" width="720">
 
 Ten real-time simulations on your graphics chip, dissolving slowly from one
-into the next, behind your windows on Ubuntu / GNOME.
+into the next, behind your windows on Ubuntu / GNOME, with native hosts for
+Windows and macOS.
 
 [Scenes](#the-scenes) ·
 [Quick start](#quick-start) ·
 [Make it your wallpaper](#make-it-your-wallpaper) ·
 [Windows](#windows) ·
+[macOS](#macos) ·
 [How-tos](#how-tos) ·
 [On the web](#on-the-web) ·
 [How it was made](#how-it-was-made)
@@ -141,6 +145,32 @@ fullscreen window covers, while the session is locked, and in battery saver.
 It works with both the classic and the Windows 11 24H2 desktop layout and
 reattaches when Explorer restarts. See [windows/README.md](windows/README.md)
 for building from source, options and troubleshooting.
+
+## macOS
+
+On macOS, a small native host (`macos/`, Swift with WKWebView) runs the
+[web version](#on-the-web) — all five of its scenes — as the desktop
+background, under the icons, on every screen and every Space.
+
+**1. Install the Swift tools** if you don't have Xcode: `xcode-select --install`.
+It needs macOS 13 or newer.
+
+**2. Build and install it** from Terminal in the repository:
+
+```bash
+macos/build.sh --install --open-at-login
+```
+
+That puts `Aether.app` in `~/Applications`, opens it, and opens it at every
+login. Run the script again to update; `--uninstall` removes it. An app you
+built yourself opens normally; if you copy it to another Mac, allow it once
+in System Settings › Privacy & Security (**Open Anyway**).
+
+Its menu bar item has a brightness slider, pause and resume, a scene picker
+and "Open at Login". It pauses on its own on any screen whose desktop is fully
+covered (including by fullscreen apps), while the screen is locked or asleep,
+and in Low Power Mode. See [macos/README.md](macos/README.md) for building
+from source, options and troubleshooting.
 
 ## How-tos
 
@@ -322,9 +352,9 @@ event. The script also picks up changes made in other tabs.
 **As a desktop wallpaper on Windows and macOS**
 
 [`web/wallpaper.html`](web/wallpaper.html) is a full-screen, full-strength version for wallpaper
-hosts. On Windows, the native host in [`windows/`](#windows) shows it behind
-the icons. You can also use it with Lively Wallpaper (Windows) or Plash (macOS);
-see [docs/PLATFORMS.md](docs/PLATFORMS.md) for how, and for the macOS plan.
+hosts. The native hosts in [`windows/`](#windows) and [`macos/`](#macos) show
+it behind the desktop icons. You can also use it with Lively Wallpaper (Windows)
+or Plash (macOS); see [docs/PLATFORMS.md](docs/PLATFORMS.md) for how.
 
 More canvas options: `data-strength` overrides the base strength, `data-pixels`
 sets the resolution budget (default about 0.5 megapixels), and `data-parallax="0"`
@@ -337,8 +367,9 @@ page URL to stay on one scene, which is handy for screenshots.
 
 ## How it was made
 
-This project was built by two AI coding agents in about a day: first a model
-running entirely on my own hardware at home, then Claude.
+It started with an inkling, quite literally. This project was built by two AI
+coding agents in about a day: first Inkling, a model running entirely on my
+own hardware at home, then Claude.
 
 ### Act 1: a model running at home
 
@@ -471,6 +502,7 @@ aether/                GPU renderer
 web/aether-bg.js       WebGL2 port for web pages (5 scenes)
 web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
 windows/               native Windows host: WebView2 behind the desktop icons (C#, .NET 8)
+macos/                 native macOS host: WKWebView at the desktop window level (Swift)
 mirage/                CPU renderer
   app.py               GTK application: window, overlay, input, tick loop
   scheduler.py         scene and palette rotation, never back-to-back
