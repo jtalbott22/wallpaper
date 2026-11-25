@@ -147,11 +147,13 @@ icons on every monitor.
 .\windows\install.ps1 -StartAtLogin
 ```
 
-That puts it in `%LOCALAPPDATA%\Programs\Aether`, starts it, and starts it
-at every login. Run the script again to update; `-Uninstall` removes it.
+That puts it in `%LOCALAPPDATA%\Programs\Aether` and the Start menu, starts
+it, and starts it at every login. Run the script again to update; `-Uninstall`
+removes it.
 
-Its tray icon has a brightness slider, pause and resume, a scene picker and
-"Start at login". It pauses on its own on any monitor a maximized or
+Its tray icon (the same Aether mark as on macOS, GNOME and the web) has a
+brightness slider, pause and resume, a scene picker, next scene, "Open Aether
+in browser" and "Start at login". It pauses on its own on any monitor a maximized or
 fullscreen window covers, while the session is locked, and in battery saver.
 It works with both the classic and the Windows 11 24H2 desktop layout and
 reattaches when Explorer restarts. See [windows/README.md](windows/README.md)

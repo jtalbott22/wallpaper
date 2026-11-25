@@ -83,6 +83,12 @@ sealed class WallpaperView : NativeWindow, IDisposable
         wv.Navigate(url);
     }
 
+    /// <summary>Run a line of script in the page, once it has loaded.</summary>
+    public void Run(string script)
+    {
+        if (ready && controller != null) _ = controller.CoreWebView2.ExecuteScriptAsync(script);
+    }
+
     public void Navigate(string url)
     {
         if (controller != null) controller.CoreWebView2.Navigate(url);

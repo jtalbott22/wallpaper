@@ -9,6 +9,8 @@
     <RootNamespace>Aether</RootNamespace>
     <AssemblyName>Aether</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- the Aether mark, as on macOS, GNOME and the web; regenerate with make-icon.ps1 -->
+    <ApplicationIcon>Aether.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- run on .NET 8 or anything newer that is installed -->
     <RollForward>Major</RollForward>
@@ -24,7 +26,7 @@
 
   <!-- the shared page ships next to the exe, so a published copy works on its own -->
   <ItemGroup>
-    <Content Include="..\web\wallpaper.html;..\web\aether-bg.js" Link="web\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\web\wallpaper.html;..\web\aether.html;..\web\aether-bg.js" Link="web\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- the WebView2 package also references its WPF control, which a WinForms app doesn't need -->
