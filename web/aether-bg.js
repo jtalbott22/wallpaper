@@ -800,7 +800,10 @@
   };
 
   // ------------------------------------------------------------------ page
-  var ZOOM = 1.2;                         // how much bigger the field is than the window
+  // how much bigger the field is than the window; data-parallax="0" turns
+  // the scroll and mouse parallax off and shows the whole field, centred
+  var PARALLAX = canvas.getAttribute('data-parallax') !== '0';
+  var ZOOM = PARALLAX ? 1.2 : 1;
   var view = { zoom: ZOOM, shift: [0, 0], exposure: 1.25, fade: 0, strength: 0, dark: 1, paper: [0, 0, 0] };
   var target = { dark: 1, paper: [0, 0, 0] };
   var scroll = 0, pointerX = 0, pointerS = 0;
@@ -814,7 +817,10 @@
     target.paper = c;
     target.dark = lum < 0.4 ? 1 : 0;
   }
-  function strengthFor(dark) { return dark ? 0.32 : 0.44; }
+  // data-strength="1" on the canvas overrides the base strength (for a
+  // full-screen wallpaper rather than a page background)
+  var STRENGTH = parseFloat(canvas.getAttribute('data-strength'));
+  function strengthFor(dark) { return isFinite(STRENGTH) ? STRENGTH : dark ? 0.32 : 0.44; }
 
   // Brightness level, 0 (off) to 1.5, saved per visitor. A page control can
   // change it live with: dispatchEvent(new CustomEvent('aether-level', {detail: 0.8}))
@@ -833,8 +839,10 @@
   view.level = level;
 
   function cssSize() { return [window.innerWidth, Math.max(window.innerHeight, document.documentElement.clientHeight)]; }
+  // data-pixels sets the simulation pixel budget (default about 0.5 megapixels)
+  var PIXELS = parseFloat(canvas.getAttribute('data-pixels')) || 520000;
   function simSize(css) {
-    var k = Math.min(1, Math.sqrt(520000 / (css[0] * css[1]))) * quality;
+    var k = Math.min(1, Math.sqrt(PIXELS / (css[0] * css[1]))) * quality;
     return [Math.max(160, Math.round(css[0] * k)), Math.max(120, Math.round(css[1] * k))];
   }
 
@@ -858,7 +866,7 @@
     scroll += (prog - scroll) * k;
     pointerS += (pointerX - pointerS) * Math.min(1, dt * 1.5);
     var slack = 1 - 1 / ZOOM;
-    view.shift = [pointerS * slack * 0.25, slack * (1 - scroll)];
+    view.shift = PARALLAX ? [pointerS * slack * 0.25, slack * (1 - scroll)] : [0, 0];
   }
 
   function frame(now) {

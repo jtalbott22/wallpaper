@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  Aether as a full-screen desktop wallpaper, for any host that can show a web
+  page behind the desktop (a native wrapper, Lively Wallpaper on Windows,
+  Plash on macOS, or just a fullscreen browser window).
+
+  Query options:
+    ?aether=physarum   stay on one scene (nebula, julia, reaction, physarum, attractor)
+    ?level=0.8         brightness, 0-1.5 (default 1)
+
+  Hosts can pause it by sending level 0 and resume with any other level:
+    window.dispatchEvent(new CustomEvent('aether-level', { detail: 0 }))
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aether</title>
+<style>
+  :root{ --paper:#000000; color-scheme:dark; }
+  html, body{ margin:0; height:100%; background:#000; overflow:hidden; cursor:none; }
+  #aether-bg{ position:fixed; inset:0; width:100vw; height:100vh; display:block; opacity:0; transition:opacity 2s ease; }
+  #aether-bg.on{ opacity:1; }
+</style>
+</head>
+<body>
+<canvas id="aether-bg" aria-hidden="true" data-strength="1" data-pixels="1200000" data-parallax="0" data-level-key="aether-wallpaper-level"></canvas>
+<script>
+  // ?level= wins over a saved level so hosts can set it from the URL
+  (function () {
+    var m = /[?&]level=([0-9.]+)/.exec(location.search);
+    if (m) try { localStorage.setItem('aether-wallpaper-level', m[1]); } catch (e) {}
+  })();
+</script>
+<script src="aether-bg.js"></script>
+</body>
+</html>

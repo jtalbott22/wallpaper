@@ -13,6 +13,7 @@ into the next, behind your windows on Ubuntu / GNOME.
 [Quick start](#quick-start) ·
 [Make it your wallpaper](#make-it-your-wallpaper) ·
 [How-tos](#how-tos) ·
+[On the web](#on-the-web) ·
 [How it was made](#how-it-was-made)
 
 </div>
@@ -229,6 +230,84 @@ the extension's log, including the renderer's output.
 python3 -m aether --sheet x.png --scene "Name"
 ```
 
+## On the web
+
+[`web/aether-bg.js`](web/aether-bg.js) is a WebGL2 port of five scenes
+(Nebula, Julia, Reaction, Physarum and Attractor) made to sit behind a web
+page as a slow, subtle background. It's one 30 KB file with no
+dependencies. You can see it live on
+[joshuaallentalbott.com](https://joshuaallentalbott.com/), where it defaults to 20%.
+
+<img src="docs/screenshots/web.jpg" alt="Aether behind a web page: Nebula in light mode, Julia in dark mode" width="100%">
+
+<sub>At 100%: Nebula in light mode (left), Julia in dark mode (right).</sub>
+
+**Add it to a page**
+
+1. Copy `web/aether-bg.js` next to your page.
+2. Put a canvas first inside `<body>`:
+
+   ```html
+   <canvas id="aether-bg" aria-hidden="true"></canvas>
+   ```
+
+3. Give it this CSS:
+
+   ```css
+   #aether-bg{ position:fixed; inset:0; width:100vw; height:100lvh; z-index:-1;
+               pointer-events:none; opacity:0; transition:opacity 1.4s; }
+   #aether-bg.on{ opacity:1; }
+   @media print{ #aether-bg{ display:none; } }
+   ```
+
+4. Load the script at the end of `<body>`:
+
+   ```html
+   <script src="aether-bg.js" defer></script>
+   ```
+
+Sections with solid backgrounds hide it, so make them see-through
+(`color-mix(in srgb, var(--wash) 84%, transparent)` works well).
+
+**What it does**
+
+- **Follows your theme.** It reads the page's `--paper` CSS colour and
+  redraws when `data-theme` or the system theme changes. On a dark page the
+  glow lights the paper; on a light page the same shapes become pale tints.
+- **Parallax.** The field is 20% taller than the window and drifts up slower
+  than the page scrolls, with a slight shift following the mouse.
+- **Easy on devices.** It caps at 30 fps, pauses in background tabs, lowers
+  its resolution on slow hardware, and shows one still frame when the visitor
+  prefers reduced motion. Without WebGL2 it does nothing and the page looks
+  as before. When it starts it adds `aether-ready` to `<html>`, so you can
+  show controls only when it's running.
+
+**Brightness**
+
+| Setting | What it does |
+|---|---|
+| `data-level-default="0.2"` on the canvas | brightness for visitors who haven't chosen one (0–1.5, default 1) |
+| `data-level-key="my-key"` on the canvas | `localStorage` key for the visitor's choice (default `aether-level`) |
+| `dispatchEvent(new CustomEvent('aether-level', {detail: 0.6}))` | change it live, for example from a slider; 0 fades it out and stops drawing |
+
+A slider only needs to save its value under the same key and send that
+event. The script also picks up changes made in other tabs.
+
+**As a desktop wallpaper on Windows and macOS**
+
+[`web/wallpaper.html`](web/wallpaper.html) is a full-screen, full-strength version for wallpaper
+hosts. You can use it today with Lively Wallpaper (Windows) or Plash (macOS).
+See [docs/PLATFORMS.md](docs/PLATFORMS.md) for how, and for the plan for native apps.
+
+More canvas options: `data-strength` overrides the base strength, `data-pixels`
+sets the resolution budget (default about 0.5 megapixels), and `data-parallax="0"`
+turns parallax off.
+
+**Show one scene**
+
+Add `?aether=physarum` (or `nebula`, `julia`, `reaction`, `attractor`) to the
+page URL to stay on one scene, which is handy for screenshots.
+
 ## How it was made
 
 This project was built by two AI coding agents in about a day: first a model
@@ -362,6 +441,8 @@ aether/                GPU renderer
   headless.py          surfaceless EGL context for previews and benchmarks
   preview.py           --preview, --sheet and --bench
   scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
+web/aether-bg.js       WebGL2 port for web pages (5 scenes)
+web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
 mirage/                CPU renderer
   app.py               GTK application: window, overlay, input, tick loop
   scheduler.py         scene and palette rotation, never back-to-back
