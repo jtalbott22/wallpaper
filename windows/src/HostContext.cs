@@ -12,7 +12,11 @@ namespace Aether;
 /// </summary>
 sealed class HostContext : ApplicationContext
 {
-    static readonly string[] Scenes = { "nebula", "julia", "reaction", "physarum", "attractor" };
+    static readonly (string Key, string Title)[] Scenes =
+    {
+        ("nebula", "Nebula"), ("julia", "Julia"), ("reaction", "Reaction"), ("physarum", "Physarum"), ("attractor", "Attractor"),
+        ("silk", "Silk"), ("chaos", "Chaos"), ("galaxy", "Galaxy"), ("ink", "Ink"), ("life", "Particle Life"),
+    };
 
     readonly Settings settings = Settings.Load();
     readonly bool devTools;
@@ -62,7 +66,7 @@ sealed class HostContext : ApplicationContext
         sceneMenu = new ToolStripMenuItem("Scene");
         sceneMenu.DropDownItems.Add(SceneItem(null, "All scenes, in turn"));
         sceneMenu.DropDownItems.Add(new ToolStripSeparator());
-        foreach (var s in Scenes) sceneMenu.DropDownItems.Add(SceneItem(s, CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s)));
+        foreach (var (key, title) in Scenes) sceneMenu.DropDownItems.Add(SceneItem(key, title));
 
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]

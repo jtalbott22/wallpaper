@@ -3,25 +3,29 @@ import ServiceManagement
 
 struct Options {
     var devTools = false
-    var snapshot = false
+    var snapshot: Double?
     var verbose = false
     var quit = false
     var login: Bool?
+    var scene: String?
 
     init(_ args: [String]) {
         var i = 1
         while i < args.count {
             switch args[i] {
             case "--devtools": devTools = true
-            case "--snapshot": snapshot = true
+            case "--snapshot":
+                if i + 1 < args.count, let s = Double(args[i + 1]) { snapshot = s; i += 1 } else { snapshot = 10 }
             case "--verbose", "-v": verbose = true
             case "--quit": quit = true
+            case "--scene":
+                if i + 1 < args.count { scene = args[i + 1].lowercased(); i += 1 }
             case "--open-at-login":
                 if i + 1 < args.count, ["on", "off"].contains(args[i + 1]) { login = args[i + 1] == "on"; i += 1 }
                 else { login = true }
             case "--help", "-h":
                 print("""
-                usage: Aether [--devtools] [--snapshot] [--verbose]
+                usage: Aether [--scene <name>] [--devtools] [--snapshot [seconds]] [--verbose]
                        Aether --quit                  close the running copy
                        Aether --open-at-login on|off  change the login item and exit
                 """)
@@ -36,7 +40,9 @@ struct Options {
 /// The whole app: one wallpaper window per screen, the reasons to pause them,
 /// and the menu bar item.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    static let scenes = ["nebula", "julia", "reaction", "physarum", "attractor"]
+    static let scenes = [("nebula", "Nebula"), ("julia", "Julia"), ("reaction", "Reaction"), ("physarum", "Physarum"),
+                         ("attractor", "Attractor"), ("silk", "Silk"), ("chaos", "Chaos"), ("galaxy", "Galaxy"),
+                         ("ink", "Ink"), ("life", "Particle Life")]
     static let quitNotification = Notification.Name(bundleID + ".quit")
 
     let options: Options
@@ -70,8 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         locked = AppDelegate.screenIsLocked()
         if lowPower { Log.write("Low Power Mode on") }
         rebuild()
-        if options.snapshot {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in self?.snapshot() }
+        if let after = options.snapshot {
+            DispatchQueue.main.asyncAfter(deadline: .now() + after) { [weak self] in self?.snapshot() }
         }
     }
 
@@ -114,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func pageURL() -> URL {
         var c = URLComponents(url: webFolder.appendingPathComponent("wallpaper.html"), resolvingAgainstBaseURL: true)!
         var q = [URLQueryItem(name: "level", value: String(format: "%.2f", settings.brightness))]
-        if let s = settings.scene { q.append(URLQueryItem(name: "aether", value: s)) }
+        if let s = options.scene ?? settings.scene { q.append(URLQueryItem(name: "aether", value: s)) }
         c.queryItems = q
         return c.url!
     }
@@ -260,7 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sceneMenu.autoenablesItems = false
         sceneMenu.addItem(sceneEntry(nil, "All Scenes, in Turn"))
         sceneMenu.addItem(.separator())
-        for s in AppDelegate.scenes { sceneMenu.addItem(sceneEntry(s, s.capitalized)) }
+        for (key, title) in AppDelegate.scenes { sceneMenu.addItem(sceneEntry(key, title)) }
 
         for item in [statusLine, .separator(), brightLine, sliderItem, .separator(),
                      pauseItem!, sceneItem, loginItem!, .separator(),

@@ -76,7 +76,7 @@ Aether lives in the menu bar (a small circle). Click it for:
 
 - **Brightness** slider (5–150%), saved
 - **Pause / Resume**, saved
-- **Scene**: all five in turn, or stay on one
+- **Scene**: all ten in turn, or stay on one
 - **Open at Login**: registers the app with `SMAppService.mainApp`; it also
   appears in System Settings › General › Login Items
 - **Reload**, **Show Log**, **Quit Aether**
@@ -107,7 +107,8 @@ Command-line options for the binary (`~/Applications/Aether.app/Contents/MacOS/A
 | `--open-at-login on` / `off` | change the login item and exit |
 | `--verbose` | also print the log to the terminal |
 | `--devtools` | let Safari's Web Inspector attach (Safari › Develop › your Mac › Aether) |
-| `--snapshot` | after 10 seconds, save a picture of each screen's page next to the log |
+| `--scene <name>` | stay on one scene this time, without changing the saved choice (`silk`, `life`, ...) |
+| `--snapshot [seconds]` | after 10 seconds (or the number given), save a picture of each screen's page next to the log |
 
 ## How it works
 
@@ -134,7 +135,7 @@ Command-line options for the binary (`~/Applications/Aether.app/Contents/MacOS/A
   `NSWorkspace`'s sleep, wake and session notifications, and
   `ProcessInfo.isLowPowerModeEnabled`.
 - **WebGL.** WKWebView gives the page WebGL 2 with `EXT_color_buffer_float`,
-  so all five scenes run. The log names the renderer the first time the page
+  so all ten scenes run. The log names the renderer the first time the page
   loads.
 
 ## Troubleshooting

@@ -5,7 +5,8 @@
   Plash on macOS, or just a fullscreen browser window).
 
   Query options:
-    ?aether=physarum   stay on one scene (nebula, julia, reaction, physarum, attractor)
+    ?aether=physarum   stay on one scene (nebula, julia, reaction, physarum, attractor,
+                       silk, chaos, galaxy, ink, life)
     ?level=0.8         brightness, 0-1.5 (default 1)
 
   Hosts can pause it by sending level 0 and resume with any other level:
@@ -24,7 +25,7 @@
 </style>
 </head>
 <body>
-<canvas id="aether-bg" aria-hidden="true" data-strength="1" data-pixels="1200000" data-parallax="0" data-level-key="aether-wallpaper-level"></canvas>
+<canvas id="aether-bg" aria-hidden="true" data-strength="1" data-pixels="1200000" data-parallax="0" data-level-key="aether-wallpaper-level" data-scenes="all"></canvas>
 <script>
   // ?level= wins over a saved level so hosts can set it from the URL
   (function () {

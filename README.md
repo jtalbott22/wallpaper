@@ -124,7 +124,7 @@ mouse (the desktop window doesn't receive pointer events).
 ## Windows
 
 On Windows, a small native host (`windows/`, C# / .NET 8 with WebView2) runs
-the [web version](#on-the-web) — five of the scenes — behind the desktop
+the [web version](#on-the-web) — all ten scenes — behind the desktop
 icons on every monitor.
 
 **1. Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)**
@@ -149,7 +149,7 @@ for building from source, options and troubleshooting.
 ## macOS
 
 On macOS, a small native host (`macos/`, Swift with WKWebView) runs the
-[web version](#on-the-web) — all five of its scenes — as the desktop
+[web version](#on-the-web) — all ten scenes — as the desktop
 background, under the icons, on every screen and every Space.
 
 **1. Install the Swift tools** if you don't have Xcode: `xcode-select --install`.
@@ -288,10 +288,13 @@ python3 -m aether --sheet x.png --scene "Name"
 
 ## On the web
 
-[`web/aether-bg.js`](web/aether-bg.js) is a WebGL2 port of five scenes
-(Nebula, Julia, Reaction, Physarum and Attractor) made to sit behind a web
-page as a slow, subtle background. It's one 30 KB file with no
-dependencies. You can see it live on
+[`web/aether-bg.js`](web/aether-bg.js) is a WebGL2 port of all ten scenes
+made to sit behind a web page as a slow, subtle background. It's one 90 KB
+file with no dependencies. As a page background it shows the calmer five
+(Nebula, Julia, Reaction, Physarum and Attractor); add `data-scenes="all"` to
+the canvas for all ten, as the desktop wallpaper page does. WebGL2 has no
+compute shaders, so the particle scenes keep their particles in float
+textures, move them in fragment shaders and draw them as points. You can see it live on
 [joshuaallentalbott.com](https://joshuaallentalbott.com/), where it defaults to 20%.
 
 <img src="docs/screenshots/web.jpg" alt="Aether behind a web page: Nebula in light mode, Julia in dark mode" width="100%">
@@ -362,7 +365,8 @@ turns parallax off.
 
 **Show one scene**
 
-Add `?aether=physarum` (or `nebula`, `julia`, `reaction`, `attractor`) to the
+Add `?aether=physarum` (or `nebula`, `julia`, `reaction`, `attractor`, `silk`,
+`chaos`, `galaxy`, `ink`, `life`) to the
 page URL to stay on one scene, which is handy for screenshots.
 
 ## How it was made
@@ -499,7 +503,7 @@ aether/                GPU renderer
   headless.py          surfaceless EGL context for previews and benchmarks
   preview.py           --preview, --sheet and --bench
   scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
-web/aether-bg.js       WebGL2 port for web pages (5 scenes)
+web/aether-bg.js       WebGL2 port for web pages and the Windows and macOS hosts (10 scenes)
 web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
 windows/               native Windows host: WebView2 behind the desktop icons (C#, .NET 8)
 macos/                 native macOS host: WKWebView at the desktop window level (Swift)
