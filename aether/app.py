@@ -3,7 +3,9 @@
 Window mode is for watching/testing (Space = next scene, F11 = fullscreen,
 Esc = quit). Wallpaper mode is what the GNOME Shell extension launches: no
 input handling; SIGUSR1 pauses, SIGUSR2 resumes; lower frame rate on battery.
+SIGHUP re-reads the settings the top bar menu writes (see settings_path()).
 """
+import json
 import os
 import signal
 import sys
@@ -16,6 +18,21 @@ from gi.repository import Gtk, Gdk, GLib
 
 from . import gl as G
 from .gl import gl
+
+
+def settings_path():
+    """Settings shared with the GNOME Shell extension's top bar menu."""
+    base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+    return os.path.join(base, 'aether', 'wallpaper.json')
+
+
+def read_settings():
+    try:
+        with open(settings_path()) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 class AetherApp:
@@ -32,6 +49,11 @@ class AetherApp:
         self.frames = 0
         self.fps_t0 = time.monotonic()
         self.loop = GLib.MainLoop()
+        # brightness, scene and "next scene" from the top bar menu (wallpaper mode)
+        self.level = 1.0
+        self.next_count = None
+        if self.wallpaper:
+            self._apply_settings(first=True)
 
         self.window = Gtk.Window(title='Aether Wallpaper' if self.wallpaper else 'Aether')
         self.window.set_decorated(False)
@@ -107,6 +129,7 @@ class AetherApp:
             from .engine import Engine
             self.engine = Engine(vw, vh, quality=quality, seed=self.args.seed,
                                  scene=self.args.scene, log=self.log)
+            self.engine.level = self.engine._level = self.level
         elif (vw, vh) != (self.engine.out_w, self.engine.out_h) or abs(quality - self.engine.quality) > 1e-3:
             self.engine.resize(vw, vh, quality)
         try:
@@ -150,6 +173,39 @@ class AetherApp:
         return True
 
     # ---- wallpaper plumbing -----------------------------------------------------
+    def _apply_settings(self, first=False):
+        d = read_settings()
+        try:
+            self.level = min(1.5, max(0.05, float(d.get('brightness', 1.0))))
+        except (TypeError, ValueError):
+            self.level = 1.0
+        scene = d.get('scene') or None
+        nxt = d.get('next', 0)
+        if first:
+            if scene and not self.args.scene:
+                from .scenes import REGISTRY
+                if any(c.name.lower() == str(scene).lower() for c in REGISTRY):
+                    self.args.scene = scene
+            self.next_count = nxt
+            return GLib.SOURCE_CONTINUE
+        self.log(f'Settings: brightness {self.level:.2f}, scene {scene or "all"}')
+        eng = self.engine
+        if eng is not None:
+            eng.level = self.level
+            if (scene or None) != (eng.forced_scene or None):
+                from .scenes import REGISTRY
+                if scene is None or any(c.name.lower() == str(scene).lower() for c in REGISTRY):
+                    eng.forced_scene = scene
+                    if scene:
+                        eng.skip()
+            if nxt != self.next_count:
+                eng.skip()
+            if self.paused:   # show the new brightness even while paused
+                eng._level = self.level
+                self.area.queue_render()
+        self.next_count = nxt
+        return GLib.SOURCE_CONTINUE
+
     def _set_paused(self, paused):
         if paused != self.paused:
             self.paused = paused
@@ -196,6 +252,7 @@ class AetherApp:
     def run(self):
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, lambda: self._set_paused(True))
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2, lambda: self._set_paused(False))
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGHUP, self._apply_settings)
         for sig in (signal.SIGTERM, signal.SIGINT):
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, self.quit)
         self.on_battery = self._read_on_battery()

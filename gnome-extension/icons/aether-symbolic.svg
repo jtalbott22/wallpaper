@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="1 1 16 16">
+  <!-- symbolic icons are recoloured as fills, so every shape here is a filled outline -->
+  <path fill="#bebebe" fill-rule="evenodd" d="M9 1.8a7.2 7.2 0 1 1 0 14.4a7.2 7.2 0 1 1 0-14.4zM9 3.2a5.8 5.8 0 1 0 0 11.6a5.8 5.8 0 1 0 0-11.6z"/>
+  <path fill="#bebebe" d="M8 5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5z"/>
+  <path fill="#bebebe" d="M4.5 11C7 14.5 12 13 13.5 9L14.1 9.25C12.4 13.7 6.6 15.3 4 11.35Z"/>
+</svg>

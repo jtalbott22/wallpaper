@@ -117,6 +117,17 @@ What the extension does:
 - sizes it to the primary monitor
 - **pauses rendering** while a maximized or fullscreen window covers the
   screen, and while the screen is locked, so it costs nothing while you work
+- adds an **Aether menu to the top bar**, with the same ring-and-swirl icon as
+  the macOS menu bar item:
+  - a brightness slider (5–150%)
+  - pause and resume
+  - pick one scene or let it move through all of them, and skip to the next scene
+  - open the [interactive web version](#on-the-web) in your browser
+  - restart the wallpaper
+
+  Your choices are saved in `~/.config/aether/wallpaper.json`, and the renderer
+  re-reads them on `SIGHUP`, so changes apply without a restart. After updating
+  from an older version, log out and back in once to get the menu.
 
 **Limits:** it covers the primary monitor only, and it doesn't react to the
 mouse (the desktop window doesn't receive pointer events).
@@ -363,6 +374,21 @@ More canvas options: `data-strength` overrides the base strength, `data-pixels`
 sets the resolution budget (default about 0.5 megapixels), and `data-parallax="0"`
 turns parallax off.
 
+**Play with it in a browser**
+
+[`web/aether.html`](web/aether.html) is the full wallpaper experience in a tab, with
+controls: all ten scenes, full screen, pick or hold a scene, pause, change the
+speed (¼× to 3×), zoom in where you point (scroll or pinch) and drag to look
+around, set the brightness, and save the current frame as a PNG. Press `?` on
+the page for the keyboard shortcuts. Try it on
+[joshuaallentalbott.com/aether.html](https://joshuaallentalbott.com/aether.html),
+open the file locally, or use **Open Aether in Browser** in the Linux top bar menu.
+
+Pages can drive the engine through `window.Aether`: `scenes()`, `scene()`,
+`show(key)`, `next()`, `hold(bool)`, `pause(bool)`, `speed(x)`, `zoomAt(factor, x, y)`,
+`pan(dx, dy)`, `resetView()` and `snapshot()`. It fires an `aether-scene` event
+on `window` whenever a new scene starts.
+
 **Show one scene**
 
 Add `?aether=physarum` (or `nebula`, `julia`, `reaction`, `attractor`, `silk`,
@@ -493,7 +519,7 @@ python3 -m mirage.preview --scene NAME --palette NAME --size WxH --frames N --ou
 
 ```
 install-wallpaper.sh   installs the GNOME Shell extension
-gnome-extension/       extension that runs Aether (or Mirage) as the desktop wallpaper
+gnome-extension/       extension that runs Aether (or Mirage) as the desktop wallpaper, plus the top bar menu
 aether/                GPU renderer
   app.py               GTK 4 GLArea front end, frame pacing, wallpaper signals, battery
   engine.py            scene scheduling, noise dissolves, bloom, ACES tone map, auto-exposure
@@ -505,6 +531,7 @@ aether/                GPU renderer
   scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
 web/aether-bg.js       WebGL2 port for web pages and the Windows and macOS hosts (10 scenes)
 web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
+web/aether.html        interactive full-screen page: scenes, speed, zoom, snapshots
 windows/               native Windows host: WebView2 behind the desktop icons (C#, .NET 8)
 macos/                 native macOS host: WKWebView at the desktop window level (Swift)
 mirage/                CPU renderer

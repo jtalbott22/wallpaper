@@ -1497,6 +1497,7 @@
     if (ALL_SCENES) this.scenes = this.scenes.concat(extra);
     this.known = this.scenes.concat(ALL_SCENES ? [] : extra);
     this.history = [];
+    this.hold = !!FORCED;
     this.comp = new Target(w, h, F16);
     this.cur = null; this.nxt = null; this.trans = 0; this.time = 0;
   }
@@ -1505,25 +1506,34 @@
     var opts = this.scenes.filter(function (c) { return recent.indexOf(c.sceneName) < 0 && !(first && c === Nebula); });
     if (this.opts.still) opts = [Nebula, Julia];
     var forced = this.known.filter(function (c) { return c.key === FORCED; });
-    if (forced.length) return forced[0];
+    if (forced.length && !this.history.length) return forced[0];
     var total = opts.reduce(function (s, c) { return s + c.weight; }, 0), x = this.r() * total;
     for (var i = 0; i < opts.length; i++) { x -= opts[i].weight; if (x <= 0) return opts[i]; }
     return opts[opts.length - 1];
   };
-  Engine.prototype.newScene = function () {
-    var C = this.pickClass(!this.history.length);
+  Engine.prototype.newScene = function (C) {
+    C = C || this.pickClass(!this.history.length);
     var s = new C(rng(this.r.bits()), this.w, this.h);
     s.lifetime = this.r.uniform(s.duration[0], s.duration[1]);
+    s.cls = C;
     this.history.push(C.sceneName);
+    try { window.dispatchEvent(new CustomEvent('aether-scene', { detail: { key: C.key, name: C.sceneName } })); } catch (e) {}
     return s;
   };
+  // start dissolving into scene class C (or a random one) right away
+  Engine.prototype.goTo = function (C) {
+    if (!this.cur) { this.cur = this.newScene(C); return; }
+    if (this.nxt) { this.cur.release(); this.cur = this.nxt; }
+    this.nxt = this.newScene(C); this.trans = 0;
+  };
+  Engine.prototype.showing = function () { var s = this.nxt || this.cur; return s ? s.cls : null; };
   Engine.prototype.frame = function (dt) {
     this.time += dt;
     if (!this.cur) this.cur = this.newScene();
     gl.bindVertexArray(vao);
     gl.disable(gl.BLEND);
     this.cur.update(dt);
-    if (!this.nxt && this.cur.t >= this.cur.lifetime && !this.opts.still && !FORCED) { this.nxt = this.newScene(); this.trans = 0; }
+    if (!this.nxt && this.cur.t >= this.cur.lifetime && !this.opts.still && !this.hold) { this.nxt = this.newScene(); this.trans = 0; }
     if (this.nxt) { this.nxt.update(dt); this.trans += dt / TRANSITION; }
     var src = this.cur.render();
     if (this.nxt) {
@@ -1563,6 +1573,9 @@
   var view = { zoom: ZOOM, shift: [0, 0], exposure: 1.25, fade: 0, strength: 0, dark: 1, paper: [0, 0, 0] };
   var target = { dark: 1, paper: [0, 0, 0] };
   var scroll = 0, pointerX = 0, pointerS = 0;
+  // interactive look-around (Aether.look): zoom >= 1 around a centre in field coordinates
+  var look = { zoom: 1, cx: 0.5, cy: 0.5 }, lookS = { zoom: 1, cx: 0.5, cy: 0.5 };
+  var paused = false, speed = 1, steps = 0;
   var quality = 1, slowFor = 0, ema = 1 / 30, last = 0, still = false, size = [0, 0], gaveUp = false;
 
   function readTheme() {
@@ -1603,11 +1616,14 @@
   }
 
   function build() {
+    // a rebuild (resize, slow GPU) keeps the scene that was showing
+    var keep = engine ? { hold: engine.hold, cls: engine.showing() } : null;
     if (engine) engine.release();
     size = cssSize();
     var s = simSize(size);
     canvas.width = s[0]; canvas.height = s[1];
     engine = new Engine(s[0], s[1], { still: still });
+    if (keep && !still) { engine.hold = keep.hold; if (keep.cls) engine.cur = engine.newScene(keep.cls); }
     view.fade = 0;
   }
 
@@ -1623,6 +1639,12 @@
     pointerS += (pointerX - pointerS) * Math.min(1, dt * 1.5);
     var slack = 1 - 1 / ZOOM;
     view.shift = PARALLAX ? [pointerS * slack * 0.25, slack * (1 - scroll)] : [0, 0];
+    var j = Math.min(1, dt * 10);
+    lookS.zoom += (look.zoom - lookS.zoom) * j; lookS.cx += (look.cx - lookS.cx) * j; lookS.cy += (look.cy - lookS.cy) * j;
+    if (!PARALLAX) {
+      view.zoom = lookS.zoom;
+      view.shift = [lookS.cx - 0.5, lookS.cy - 0.5 / lookS.zoom];
+    }
   }
 
   function frame(now) {
@@ -1632,7 +1654,11 @@
     last = now;
     dt = Math.min(dt, 0.1);
     ema += (dt - ema) * 0.05;
-    engine.frame(dt);
+    if (!paused) {
+      // faster than real time runs extra whole steps, so the simulations stay stable
+      if (speed <= 1) engine.frame(dt * speed);
+      else for (steps += speed; steps >= 1; steps--) engine.frame(dt);
+    }
     view.fade = Math.min(1, view.fade + dt / 2.5);
     updateView(dt);
     engine.present(view);
@@ -1644,13 +1670,60 @@
       return;
     }
     // too slow? drop the resolution a notch (and give up animating at the bottom)
-    slowFor = ema > 0.05 ? slowFor + dt : 0;
+    slowFor = ema > 0.05 * Math.max(1, speed) ? slowFor + dt : 0;
     if (slowFor > 4) {
       slowFor = 0; ema = 1 / 30;
       if (quality > 0.45) { quality *= 0.8; build(); }
       else { cancelAnimationFrame(raf); raf = 0; gaveUp = true; }
     }
   }
+
+  // ---- control API, for pages that let people play with it (see aether.html)
+  function clampLook() {
+    look.zoom = Math.min(6, Math.max(1, look.zoom));
+    var hw = 0.5 / look.zoom;
+    look.cx = Math.min(1 - hw, Math.max(hw, look.cx));
+    look.cy = Math.min(1 - hw, Math.max(hw, look.cy));
+  }
+  function findClass(key) {
+    if (!engine) return null;
+    key = String(key || '').toLowerCase();
+    return engine.known.filter(function (c) { return c.key === key; })[0] || null;
+  }
+  window.Aether = {
+    scenes: function () { return engine ? engine.known.map(function (c) { return { key: c.key, name: c.sceneName }; }) : []; },
+    scene: function () { var c = engine && engine.showing(); return c ? { key: c.key, name: c.sceneName } : null; },
+    // show one scene now; it stays unless hold is false
+    show: function (key, hold) {
+      var C = findClass(key);
+      if (!C || still) return false;
+      engine.hold = hold !== false;
+      engine.goTo(C); run();
+      return true;
+    },
+    next: function () { if (engine && !still) { engine.goTo(); run(); } },
+    // hold: keep the current scene instead of moving on every minute or so
+    hold: function (v) { if (engine) { if (v !== undefined) engine.hold = !!v; return engine.hold; } return false; },
+    pause: function (v) { if (v !== undefined) paused = !!v; return paused; },
+    speed: function (v) { if (v !== undefined) speed = Math.min(4, Math.max(0.1, +v || 1)); return speed; },
+    // zoom in around a point of the screen (0-1 from the top left), or pan by a screen fraction
+    zoomAt: function (factor, sx, sy) {
+      var z0 = look.zoom;
+      var fx = look.cx + (sx - 0.5) / z0, fy = look.cy + (0.5 - sy) / z0;
+      look.zoom = z0 * factor; clampLook();
+      look.cx = fx - (sx - 0.5) / look.zoom; look.cy = fy - (0.5 - sy) / look.zoom; clampLook();
+      return look.zoom;
+    },
+    pan: function (dx, dy) { look.cx -= dx / look.zoom; look.cy += dy / look.zoom; clampLook(); },
+    resetView: function () { look.zoom = 1; look.cx = look.cy = 0.5; },
+    zoom: function () { return look.zoom; },
+    // a PNG data URL of the current frame
+    snapshot: function () {
+      if (!engine) return null;
+      engine.present(view);
+      return canvas.toDataURL('image/png');
+    }
+  };
 
   function renderStill() {
     // one calm, fully developed frame for people who prefer reduced motion
@@ -1696,12 +1769,17 @@
       if (!FLOAT_RT) F16 = { i: gl.RGBA8, f: gl.RGBA, t: gl.UNSIGNED_BYTE };
     }
     still = reduceMQ.matches;
+    // data-reduced-motion="pause": start paused (with a play control) instead of a still frame
+    if (still && canvas.getAttribute('data-reduced-motion') === 'pause') { still = false; paused = true; }
     readTheme();
     view.dark = target.dark; view.paper = target.paper.slice();
     try {
       build();
       if (still) renderStill();
-      else if (level > 0) run();
+      else {
+        if (paused) for (var i = 0; i < 3; i++) engine.frame(1 / 30);
+        if (level > 0) run();
+      }
       document.documentElement.classList.add('aether-ready');
     } catch (e) {
       if (window.console) console.warn(e);

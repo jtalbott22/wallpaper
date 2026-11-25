@@ -81,7 +81,7 @@ void main() {
 
 FINAL_FS = glsl.frag('''
 uniform sampler2D uHdr, uBloom;
-uniform float uBloomStrength, uExposure, uTime, uFade;
+uniform float uBloomStrength, uExposure, uTime, uFade, uLevel;
 uniform vec2 uRes;
 vec3 aces(vec3 x) {
     const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -95,7 +95,7 @@ void main() {
     vec2 v = vUv - 0.5;
     col *= 1.0 - dot(v, v) * 0.55;             // soft vignette
     col = aces(col);
-    col = pow(col, vec3(1.0 / 2.2));
+    col = pow(col, vec3(1.0 / 2.2)) * uLevel;   // brightness from the top bar menu
     // triangular dither to kill banding in dark gradients
     float n = hash12(gl_FragCoord.xy + fract(uTime) * 97.0) + hash12(gl_FragCoord.yx * 1.37 + 11.0) - 1.0;
     col += n / 255.0;
@@ -115,6 +115,8 @@ class Engine:
         self.durations = durations  # (lo, hi) override for testing
         self.bloom_strength = bloom
         self.exposure = exposure
+        self.level = 1.0          # brightness, 0.05-1.5; glides to new values
+        self._level = 1.0
         self.time = 0.0
         self.auto_exposure = 1.0
         self.lum = None
@@ -123,6 +125,7 @@ class Engine:
         self.cur = None
         self.nxt = None
         self.trans = 0.0
+        self.want_skip = False
         self.scene_t_end = 0.0
         self.fade_in = 0.0
         self.out_w = self.out_h = 0
@@ -187,8 +190,9 @@ class Engine:
         return scene
 
     def skip(self):
-        if self.cur and not self.nxt:
-            self.cur.lifetime = self.cur.t
+        """Move on to the next scene (the forced one, if set) as soon as any
+        transition already under way has finished."""
+        self.want_skip = True
 
     # ---- frame ------------------------------------------------------------------------
     def frame(self, dt, target_fbo, vw, vh):
@@ -200,7 +204,8 @@ class Engine:
 
         # advance scenes
         self.cur.update(dt)
-        if self.nxt is None and self.cur.t >= self.cur.lifetime and not self.forced_scene:
+        if self.nxt is None and (self.want_skip or (self.cur.t >= self.cur.lifetime and not self.forced_scene)):
+            self.want_skip = False
             self.nxt = self._new_scene()
             self.trans = 0.0
         if self.nxt is not None:
@@ -245,10 +250,12 @@ class Engine:
         self._meter(dt)
 
         # final composite to the target
+        self._level += (self.level - self._level) * min(1.0, dt * 4.0)
         gl.BindFramebuffer(G.FRAMEBUFFER, target_fbo)
         gl.Viewport(0, 0, vw, vh)
         self.p_final.use().set(uHdr=0, uBloom=1, uBloomStrength=self.bloom_strength / BLOOM_LEVELS,
-                               uExposure=self.exposure * self.auto_exposure, uTime=self.time, uFade=smooth(self.fade_in),
+                               uExposure=self.exposure * self.auto_exposure * max(1.0, self._level),
+                               uLevel=min(1.0, self._level), uTime=self.time, uFade=smooth(self.fade_in),
                                uRes=(float(vw), float(vh)))
         src.bind(0)
         self.bloom[0].tex.bind(1)
