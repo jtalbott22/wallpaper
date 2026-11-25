@@ -1,0 +1,129 @@
+# Aether for Windows
+
+A small native host that shows [`web/wallpaper.html`](../web/wallpaper.html)
+as your desktop wallpaper, behind the desktop icons, on every monitor.
+It's C# / .NET 8 with WebView2, under 1,000 lines, no installer framework.
+
+## Requirements
+
+- Windows 10 or 11 (tested on Windows 11 build 26300, which uses the 24H2 desktop layout)
+- The [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build
+  it (a newer SDK works too)
+- The Microsoft Edge WebView2 Runtime, which Windows 11 already has
+  ([download](https://go.microsoft.com/fwlink/p/?LinkId=2124703) for Windows 10)
+
+## Install
+
+From PowerShell in the repository:
+
+```powershell
+.\windows\install.ps1 -StartAtLogin
+```
+
+This builds a release copy into `%LOCALAPPDATA%\Programs\Aether`, starts
+it, and adds it to your login items. Leave out `-StartAtLogin` to choose later
+from the tray menu. Running the script again updates it in place (it closes
+the running copy first).
+
+Options:
+
+| | |
+|---|---|
+| `-SelfContained` | bundle .NET, for a machine without the .NET 8 Desktop Runtime (about 150 MB) |
+| `-Destination <folder>` | install somewhere else |
+| `-NoStart` | don't start it after installing |
+| `-Uninstall` | close it, delete it, and remove the login entry |
+
+If PowerShell refuses to run the script, allow local scripts for this
+session first: `Set-ExecutionPolicy -Scope Process Bypass`.
+
+## Build and run from the repository
+
+```powershell
+cd windows
+dotnet build -c Release
+.\bin\Release\net8.0-windows\Aether.exe
+```
+
+Run from inside the checkout, it loads the page from the repository's `web/`
+folder, so after editing `web/aether-bg.js` choose **Reload** in the tray menu
+to see the change. An installed copy uses the `web/` folder shipped next to
+the exe.
+
+## Using it
+
+Aether lives in the notification area (click the ^ arrow if it's hidden).
+Click its icon for:
+
+- **Brightness** slider (5–150%), saved
+- **Pause / Resume**, saved
+- **Scene**: all five in turn, or stay on one
+- **Start at login**: adds or removes `Aether` under
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+- **Reload**, **Open log folder**, **Exit**
+
+The icon greys out while the wallpaper is paused.
+
+It pauses on its own (sending the page level 0, which fades it out and stops
+drawing, so a paused wallpaper costs nothing) and resumes afterwards:
+
+- on a monitor that a maximized or fullscreen window covers, per monitor
+- while the session is locked
+- while battery saver / energy saver is on
+
+Settings are in `%APPDATA%\Aether\settings.json`, the log in
+`%LOCALAPPDATA%\Aether\aether.log`.
+
+`Aether.exe --exit` closes a running copy cleanly.
+
+## How it works
+
+- **Behind the icons.** Sending message `0x052C` to `Progman` makes Explorer
+  split the desktop into the icon layer (`SHELLDLL_DefView`) and a `WorkerW`
+  behind it. Before Windows 11 24H2 that `WorkerW` is a top-level window,
+  found right after the one that holds `SHELLDLL_DefView`; from 24H2 on it's a
+  child of `Progman` itself, below `SHELLDLL_DefView`. `Desktop.cs` handles
+  both and logs which one it found. Each monitor gets a child window of that
+  `WorkerW` holding a WebView2.
+- **Explorer restarts.** When Explorer restarts, the desktop windows (and so
+  ours) are destroyed. Aether notices (`TaskbarCreated`, its window being
+  destroyed, or a 2-second check) and attaches again.
+- **Monitors and DPI.** One view per monitor, positioned in physical pixels
+  (the app is per-monitor DPI aware v2). Display, work-area and DPI changes
+  reposition, add and remove views; WebView2 follows each monitor's scale.
+- **The page** is served from `https://aether.example/` through
+  `SetVirtualHostNameToFolderMapping`, not `file://`, and the brightness
+  goes in as `?level=`. Pausing and brightness changes are sent live with the
+  `aether-level` event.
+- **Covered?** Window events (foreground, move/size, minimize, show/hide,
+  cloak) trigger a check, debounced to 200 ms, plus one every 2 seconds. A
+  monitor counts as covered when a visible, uncloaked, non-minimized window is
+  maximized on it or covers all of it. Click-through overlays don't count.
+
+## Troubleshooting
+
+- **Nothing shows.** Open the log (tray → Open log folder). It names the
+  desktop layout it found and, when it's paused, why, including which window
+  covers the screen.
+- **Black screen instead of the animation.** Check the log for
+  "page failed to load". Start it with `--devtools` to get a right-click menu
+  with Inspect, or `--debug-port=9222` to attach Chrome DevTools at
+  `http://localhost:9222`.
+- **Wallpaper stays after Exit.** Explorer repaints the normal wallpaper when
+  Aether exits; if a frame lingers, right-click the desktop and choose
+  Refresh.
+
+## Files
+
+```
+Aether.csproj         .NET 8 WinForms project; copies web/ next to the exe
+app.manifest          Windows 10/11 compatibility
+install.ps1           build, install, start at login, uninstall
+src/Program.cs        single instance, --exit, command-line flags
+src/HostContext.cs    the app: views per monitor, pause rules, tray menu, broadcasts
+src/WallpaperView.cs  one monitor's child window and WebView2
+src/Desktop.cs        the WorkerW technique, classic and 24H2 layouts
+src/Monitors.cs       monitor list and "is it covered" check
+src/Settings.cs       settings.json, the Run key, the log
+src/Native.cs         Win32 declarations
+```
