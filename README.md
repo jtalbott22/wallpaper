@@ -12,6 +12,9 @@ Ten real-time simulations on your graphics chip, dissolving slowly from one
 into the next, behind your windows on Ubuntu / GNOME, with native hosts for
 Windows and macOS.
 
+**Linux, Windows, macOS and any browser, [in one evening](#act-3-everywhere-in-one-evening).**
+[Try it in your browser →](https://joshuaallentalbott.com/aether.html)
+
 [Scenes](#the-scenes) ·
 [Quick start](#quick-start) ·
 [Make it your wallpaper](#make-it-your-wallpaper) ·
@@ -399,7 +402,7 @@ page URL to stay on one scene, which is handy for screenshots.
 
 It started with an inkling, quite literally. This project was built by two AI
 coding agents in about a day: first Inkling, a model running entirely on my
-own hardware at home, then Claude.
+own hardware at home, then Claude. Then, in one evening, it went everywhere.
 
 ### Act 1: a model running at home
 
@@ -456,12 +459,50 @@ as the extension's fallback.
 | Tokens out | 648k |
 | Result | Aether (3,484 lines of Python and GLSL, 10 GPU scenes) plus the GNOME extension (311 lines) |
 
+### Act 3: everywhere in one evening
+
+At 8:21 pm that same evening this was a folder of Linux-only code that I
+pushed to GitHub. By 11:07 pm it ran on four platforms and was live on my
+website. Every step below is a commit you can open.
+
+The trick was one idea: don't port the desktop app, port the *engine*. Claude
+rebuilt the scenes in WebGL2, which every platform's web view can run, and
+each operating system only needed a thin native host to put that page behind
+the desktop icons. I opened a Claude Code session on my Windows PC and another
+on my Mac, pointed each at a short brief in
+[docs/PLATFORMS.md](docs/PLATFORMS.md), and let them build their hosts while
+this laptop kept going.
+
+| Time (Nov 24) | What landed |
+|---|---|
+| 8:21 pm | Linux-only code pushed to GitHub ([`9a6fdd6`](https://github.com/jtalbott22/wallpaper/commit/9a6fdd6)) |
+| 8:37 pm | Naming cleanup and this README ([`d7c60da`](https://github.com/jtalbott22/wallpaper/commit/d7c60da)) |
+| 9:16 pm | **Web:** WebGL2 port, then live behind [joshuaallentalbott.com](https://joshuaallentalbott.com/) ([`303eee2`](https://github.com/jtalbott22/wallpaper/commit/303eee2)) |
+| 9:26 pm | `wallpaper.html` and one brief per platform ([`4825e2e`](https://github.com/jtalbott22/wallpaper/commit/4825e2e)) |
+| 9:55 pm | **Windows:** native WebView2 host behind the desktop icons, built on the Windows PC ([`abb0978`](https://github.com/jtalbott22/wallpaper/commit/abb0978)) |
+| 10:17 pm | **macOS:** native WKWebView host with a menu bar item, built on the Mac ([`9a19cbc`](https://github.com/jtalbott22/wallpaper/commit/9a19cbc)) |
+| 10:41 pm | **Web:** all ten scenes ported, not just five ([`4d56722`](https://github.com/jtalbott22/wallpaper/commit/4d56722)) |
+| 11:07 pm | **Linux:** top bar menu to match the Mac's, plus the [interactive page](https://joshuaallentalbott.com/aether.html) ([`7134617`](https://github.com/jtalbott22/wallpaper/commit/7134617)) |
+
+| Platform | How it runs | Code |
+|---|---|---|
+| Linux (GNOME) | Python + OpenGL 4.3 compute shaders, GNOME Shell extension with a top bar menu | 3,548 + 560 lines |
+| Any browser | WebGL2, one dependency-free file, plus the interactive page | 2,322 lines |
+| Windows 11 | C# / .NET 8 + WebView2 behind the icons, tray menu | 1,009 lines |
+| macOS | Swift + WKWebView at the desktop level, menu bar item | 874 lines |
+
+That's 2 hours 46 minutes from "Linux only" to "everywhere". Three machines,
+three Claude Code sessions, one evening. Every platform got the same ten
+scenes, the same saved brightness, the same pause-when-covered behaviour and
+the same icon.
+
 ### The takeaway
 
 A model running entirely on hardware at home went from a one-paragraph idea
 to a working, twelve-scene wallpaper overnight, for free. A frontier model
-then took the same idea much further in under an hour. Both are in this repo,
-and the home-built one is still the safety net.
+then took the same idea much further in under an hour, and the same evening
+carried it to every screen I own and to anyone with a browser. All of it is
+in this repo, and the home-built version is still the safety net.
 
 ---
 
