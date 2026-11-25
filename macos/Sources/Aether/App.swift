@@ -42,7 +42,12 @@ struct Options {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static let scenes = [("nebula", "Nebula"), ("julia", "Julia"), ("reaction", "Reaction"), ("physarum", "Physarum"),
                          ("attractor", "Attractor"), ("silk", "Silk"), ("chaos", "Chaos"), ("galaxy", "Galaxy"),
-                         ("ink", "Ink"), ("life", "Particle Life")]
+                         ("ink", "Ink"), ("life", "Particle Life"), ("cymatics", "Cymatics"), ("turing", "Turing"),
+                         ("soup", "Free Energy"), ("cosmos", "Cosmos"), ("liquid", "Liquid"), ("bulb", "Mandelbulb")]
+    static let qualities = [("saver", "Battery Saver", "30 fps, lower resolution"),
+                            ("balanced", "Balanced", "30 fps"),
+                            ("high", "High", "60 fps, higher resolution, ray-marched shadows and the Mandelbulb"),
+                            ("max", "Maximum", "60 fps, up to full display resolution")]
     static let quitNotification = Notification.Name(bundleID + ".quit")
 
     let options: Options
@@ -58,7 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusLine = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
     let brightLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     let slider = NSSlider(value: 100, minValue: 5, maxValue: 150, target: nil, action: nil)
-    var pauseItem: NSMenuItem!, loginItem: NSMenuItem!, sceneMenu = NSMenu()
+    var pauseItem: NSMenuItem!, loginItem: NSMenuItem!, sceneMenu = NSMenu(), qualityMenu = NSMenu()
+    var mathItem: NSMenuItem!, mathAutoItem: NSMenuItem!
 
     init(options: Options) {
         self.options = options
@@ -104,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let v = views[id] { v.place(on: screen); continue }
             let v = WallpaperWindow(screen: screen, displayID: id, folder: webFolder, devTools: options.devTools)
             v.onChange = { [weak self] in self?.scheduleCheck() }
+            v.onScene = { [weak self] _ in self?.updateMenu() }
             views[id] = v
             let f = screen.frame
             Log.write("\(v.name): \(Int(f.width))x\(Int(f.height)) pt at \(Int(f.minX)),\(Int(f.minY)), scale \(screen.backingScaleFactor)")
@@ -121,6 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var c = URLComponents(url: webFolder.appendingPathComponent("wallpaper.html"), resolvingAgainstBaseURL: true)!
         var q = [URLQueryItem(name: "level", value: String(format: "%.2f", settings.brightness))]
         if let s = options.scene ?? settings.scene { q.append(URLQueryItem(name: "aether", value: s)) }
+        q.append(URLQueryItem(name: "quality", value: settings.quality))
+        if !settings.mathOnStart { q.append(URLQueryItem(name: "math", value: "0")) }
         c.queryItems = q
         return c.url!
     }
@@ -267,9 +276,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sceneMenu.addItem(sceneEntry(nil, "All Scenes, in Turn"))
         sceneMenu.addItem(.separator())
         for (key, title) in AppDelegate.scenes { sceneMenu.addItem(sceneEntry(key, title)) }
+        let qualityItem = NSMenuItem(title: "Quality", action: nil, keyEquivalent: "")
+        qualityItem.submenu = qualityMenu
+        qualityMenu.autoenablesItems = false
+        for (key, title, note) in AppDelegate.qualities {
+            let item = NSMenuItem(title: title, action: #selector(pickQuality(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = key
+            item.toolTip = note
+            qualityMenu.addItem(item)
+        }
+        qualityMenu.addItem(.separator())
+        let qnote = NSMenuItem(title: "Resolution adapts per scene to keep motion smooth", action: nil, keyEquivalent: "")
+        qnote.isEnabled = false
+        qualityMenu.addItem(qnote)
+        mathItem = NSMenuItem(title: "Show the Math (?)", action: #selector(showMath), keyEquivalent: "/")
+        mathItem.keyEquivalentModifierMask = [.command, .shift]
+        mathAutoItem = NSMenuItem(title: "Show the Math When a Scene Starts", action: #selector(toggleMathAuto), keyEquivalent: "")
 
         for item in [statusLine, .separator(), brightLine, sliderItem, .separator(),
-                     pauseItem!, sceneItem, loginItem!, .separator(),
+                     pauseItem!, sceneItem, qualityItem, .separator(),
+                     mathItem!, mathAutoItem!, .separator(), loginItem!, .separator(),
                      NSMenuItem(title: "Reload", action: #selector(reloadClicked), keyEquivalent: "r"),
                      NSMenuItem(title: "Show Log", action: #selector(showLog), keyEquivalent: ""),
                      .separator(),
@@ -301,7 +328,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         else if c == n { status = n == 1 ? "Paused (covered)" : "Paused (covered on every display)" }
         else if c > 0 { status = "Running on \(n - c) of \(n) displays" }
         else { status = n == 1 ? "Running" : "Running on \(n) displays" }
-        statusLine.title = status
+        let showing = views.values.sorted(by: { $0.displayID < $1.displayID }).compactMap { $0.sceneName }
+        statusLine.title = all == nil && c < n && !showing.isEmpty ? status + " · " + showing.joined(separator: ", ") : status
+        for item in qualityMenu.items where item.action != nil {
+            item.state = (item.representedObject as? String) == settings.quality ? .on : .off
+        }
+        mathAutoItem.state = settings.mathOnStart ? .on : .off
         pauseItem.title = settings.paused ? "Resume" : "Pause"
         brightLine.title = "Brightness  \(Int((settings.brightness * 100).rounded()))%"
         for item in sceneMenu.items where item.action != nil {
@@ -353,6 +385,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.paused.toggle()
         Log.write(settings.paused ? "paused from the menu" : "resumed from the menu")
         evaluate()
+    }
+
+    @objc func pickQuality(_ sender: NSMenuItem) {
+        guard let q = sender.representedObject as? String, q != settings.quality else { return }
+        settings.quality = q
+        Log.write("quality: \(q)")
+        let url = pageURL()
+        for v in views.values { v.load(url) }
+        updateMenu()
+    }
+
+    @objc func showMath() {
+        for v in views.values { v.send("aether-show-math") }
+    }
+
+    @objc func toggleMathAuto() {
+        settings.mathOnStart.toggle()
+        for v in views.values { v.send("aether-math-auto", settings.mathOnStart ? "true" : "false") }
+        updateMenu()
     }
 
     @objc func pickScene(_ sender: NSMenuItem) {

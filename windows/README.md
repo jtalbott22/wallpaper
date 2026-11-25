@@ -57,7 +57,8 @@ Click its icon for:
 
 - **Brightness** slider (5–150%), saved
 - **Pause / Resume**, saved
-- **Scene**: all ten in turn, or stay on one
+- **Scene**: all of them in turn, or stay on one (the page also shows each
+  scene's math when it starts, and runs at the Balanced quality preset)
 - **Start at login**: adds or removes `Aether` under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 - **Reload**, **Open log folder**, **Exit**

@@ -11,6 +11,14 @@ private final class DesktopWindow: NSWindow {
 
 /// One screen's wallpaper: a window at the desktop level holding a WKWebView
 /// that shows web/wallpaper.html.
+/// Forwards the page's messages without the web view keeping its owner alive.
+private final class MessageProxy: NSObject, WKScriptMessageHandler {
+    weak var target: WallpaperWindow?
+    func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.received(message.body)
+    }
+}
+
 final class WallpaperWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
     let displayID: CGDirectDisplayID
     private(set) var name: String
@@ -24,6 +32,10 @@ final class WallpaperWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     /// Called when the window's visibility changes or the page becomes ready.
     var onChange: (() -> Void)?
+    /// The scene the page is showing now (from its aether-scene messages).
+    private(set) var sceneName: String?
+    var onScene: ((WallpaperWindow) -> Void)?
+    private let proxy = MessageProxy()
 
     init(screen: NSScreen, displayID: CGDirectDisplayID, folder: URL, devTools: Bool) {
         self.displayID = displayID
@@ -45,6 +57,7 @@ final class WallpaperWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
         let config = WKWebViewConfiguration()
         config.mediaTypesRequiringUserActionForPlayback = .all
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
+        config.userContentController.add(proxy, name: "aether")
         config.suppressesIncrementalRendering = true
         webView = WKWebView(frame: NSRect(origin: .zero, size: screen.frame.size), configuration: config)
         webView.autoresizingMask = [.width, .height]
@@ -57,6 +70,7 @@ final class WallpaperWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
         super.init()
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        proxy.target = self
         window.contentView = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
         window.contentView?.addSubview(webView)
         window.setFrame(screen.frame, display: false)
@@ -134,7 +148,31 @@ final class WallpaperWindow: NSObject, WKNavigationDelegate, WKUIDelegate {
         onChange?()
     }
 
+    /// Fire a page event (aether-show-math, aether-math-auto, ...).
+    func send(_ event: String, _ detail: String = "null") {
+        guard ready else { return }
+        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', { detail: \(detail) }))")
+    }
+
+    fileprivate func received(_ body: Any) {
+        guard let msg = body as? [String: Any], let event = msg["event"] as? String else { return }
+        let d = msg["detail"] as? [String: Any] ?? [:]
+        switch event {
+        case "aether-scene":
+            if (d["why"] as? String) == "start", let name = d["name"] as? String {
+                sceneName = name
+                let w = d["width"] as? Int ?? 0, h = d["height"] as? Int ?? 0
+                Log.write("\(self.name): \(name) at \(w)x\(h)")
+                onScene?(self)
+            }
+        case "aether-quality":
+            Log.write("\(self.name): \(d["scene"] as? String ?? "?") now \(Int((d["pixels"] as? Double ?? 0) / 1000))k pixels (\(d["why"] as? String ?? ""))")
+        default: break
+        }
+    }
+
     func close() {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "aether")
         closed = true
         NotificationCenter.default.removeObserver(self)
         webView.stopLoading()

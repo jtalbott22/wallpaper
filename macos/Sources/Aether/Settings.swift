@@ -27,6 +27,18 @@ final class Settings {
         set { defaults.set(newValue, forKey: "paused") }
     }
 
+    /// saver, balanced, high or max: the page adapts resolution per scene within it.
+    var quality: String {
+        get { defaults.string(forKey: "quality").flatMap { ["saver", "balanced", "high", "max"].contains($0) ? $0 : nil } ?? "balanced" }
+        set { defaults.set(newValue, forKey: "quality") }
+    }
+
+    /// Show a scene's math when it starts.
+    var mathOnStart: Bool {
+        get { defaults.object(forKey: "mathOnStart") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "mathOnStart") }
+    }
+
     /// nil: all scenes in turn.
     var scene: String? {
         get { defaults.string(forKey: "scene") }

@@ -306,7 +306,7 @@
   // ----------------------------------------------------------------- Julia
   var JULIA_FS = frag([
     'uniform vec2 uC;',
-    'uniform float uZoom, uRot, uAspect, uPx, uTrapR, uInterior;',
+    'uniform float uZoom, uRot, uAspect, uPx, uTrapR, uInterior, uAA;',
     'uniform int uMaxIter;',
     'vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }',
     'vec3 sampleAt(vec2 uv) {',
@@ -324,7 +324,10 @@
     '  col += pal(0.55 + 0.35 * band) * halo * 0.35; col += pal(0.9) * edge * 0.9; return col; }',
     'void main() {',
     '  vec2 uv = (vUv - 0.5) * vec2(uAspect, 1.0); vec2 o = vec2(0.25, -0.25) * uPx / uZoom;',
-    '  fragColor = vec4((sampleAt(uv + o) + sampleAt(uv - o)) * 0.5, 1.0); }'
+    '  if (uAA < 0.5) { fragColor = vec4((sampleAt(uv + o) + sampleAt(uv - o)) * 0.5, 1.0); return; }',
+    '  float px = uPx / uZoom;',   // rotated-grid supersampling
+    '  fragColor = vec4((sampleAt(uv + vec2(0.125, 0.375) * px) + sampleAt(uv + vec2(-0.375, 0.125) * px)',
+    '    + sampleAt(uv + vec2(0.375, -0.125) * px) + sampleAt(uv + vec2(-0.125, -0.375) * px)) * 0.25, 1.0); }'
   ].join('\n'), true);
 
   var Julia = extend(function Julia(r, w, h) {
@@ -356,7 +359,7 @@
     var z = this.zoom.value;
     program('julia', JULIA_FS).use({
       uC: this.c(), uZoom: z, uRot: this.t * this.rotSpeed, uAspect: this.aspect, uPx: z / this.h,
-      uTrapR: this.trap.value, uInterior: this.interior, uMaxIter: 140, uPal: this.pal
+      uTrapR: this.trap.value, uInterior: this.interior, uMaxIter: RAY ? 220 : 140, uPal: this.pal, uAA: RAY ? 1 : 0
     });
     fullscreen();
   };
@@ -377,13 +380,21 @@
     '  fragColor = vec4(1.0, b, 0.0, 0.0); }'
   ].join('\n'));
   var RD_STEP_FS = frag([
-    'uniform sampler2D uSrc; uniform vec2 uFK, uFK2; uniform float uVarScale, uTime; uniform vec4 uSeedPt;',
+    'uniform sampler2D uSrc; uniform vec2 uFK, uFK2; uniform float uVarScale, uTime, uAniso; uniform vec4 uSeedPt;',
+    'vec2 bil(sampler2D t, vec2 x, ivec2 sz) { ivec2 i = ivec2(floor(x)); vec2 f = x - floor(x);',
+    '  vec2 a = texelFetch(t, (i + sz) % sz, 0).xy, b = texelFetch(t, (i + ivec2(1, 0) + sz) % sz, 0).xy;',
+    '  vec2 c = texelFetch(t, (i + ivec2(0, 1) + sz) % sz, 0).xy, e = texelFetch(t, (i + ivec2(1, 1) + sz) % sz, 0).xy;',
+    '  return mix(mix(a, b, f.x), mix(c, e, f.x), f.y); }',
     'void main() {',
     '  ivec2 p = ivec2(gl_FragCoord.xy); ivec2 sz = textureSize(uSrc, 0);',
     '  #define S(dx, dy) texelFetch(uSrc, (p + ivec2(dx, dy) + sz) % sz, 0).xy',
     '  vec2 c = S(0, 0);',
     '  vec2 lap = -c + 0.2 * (S(1, 0) + S(-1, 0) + S(0, 1) + S(0, -1)) + 0.05 * (S(1, 1) + S(-1, 1) + S(1, -1) + S(-1, -1));',
     '  vec2 q = vec2(p) / float(sz.y) * uVarScale;',
+    '  if (uAniso > 0.0) { float th = PI * snoise(vec3(q * 0.7, uTime * 0.015 + 7.0)); vec2 d = vec2(cos(th), sin(th));',
+    '    vec2 dxx = S(1, 0) + S(-1, 0) - 2.0 * c, dyy = S(0, 1) + S(0, -1) - 2.0 * c;',
+    '    vec2 dss = bil(uSrc, vec2(p) + d, sz) + bil(uSrc, vec2(p) - d, sz) - 2.0 * c;',
+    '    lap = mix(lap, 0.15 * (dxx + dyy) + 0.3 * dss, 0.7 * uAniso); }',
     '  float m = smoothstep(-0.35, 0.35, snoise(vec3(q, uTime * 0.01))); vec2 fk = mix(uFK, uFK2, m);',
     '  float a = c.x, b = c.y; float abb = a * b * b;',
     '  a += (lap.x - abb + fk.x * (1.0 - a)); b += (0.5 * lap.y + abb - (fk.y + fk.x) * b);',
@@ -391,7 +402,7 @@
     '  fragColor = vec4(clamp(a, 0.0, 1.0), clamp(b, 0.0, 1.0), 0.0, 0.0); }'
   ].join('\n'));
   var RD_SHOW_FS = frag([
-    'uniform sampler2D uState; uniform vec3 uLight; uniform float uRelief;',
+    'uniform sampler2D uState; uniform vec3 uLight; uniform float uRelief, uShadow;',
     'float B(ivec2 p, ivec2 sz) { return texelFetch(uState, clamp(p, ivec2(0), sz - 1), 0).y; }',
     'void main() {',
     '  ivec2 sz = textureSize(uState, 0); ivec2 p = ivec2(vUv * vec2(sz));',
@@ -400,8 +411,13 @@
     '  vec3 n = normalize(vec3((bl - br) * uRelief, (bd - bu) * uRelief, 1.0)); vec3 L = normalize(uLight);',
     '  float diff = max(dot(n, L), 0.0); vec3 H = normalize(L + vec3(0, 0, 1));',
     '  float spec = pow(max(dot(n, H), 0.0), 60.0); float x = smoothstep(0.05, 0.42, b);',
-    '  vec3 col = pal(0.04 + 0.8 * x) * (0.12 + diff) + pal(0.97) * spec * (0.25 + 0.9 * x);',
-    '  col += pal(0.85) * pow(x, 6.0) * 0.6;',
+    '  float sh = 1.0;',
+    '  if (uShadow > 0.5) { vec2 dir = normalize(uLight.xy); float h0 = b * uRelief;',   // march towards the light over the surface
+    '    for (int k = 1; k <= 20; k++) { float t = float(k) * 1.5; float hq = B(ivec2(vec2(p) + dir * t), sz) * uRelief;',
+    '      sh = min(sh, clamp(1.0 - (hq - h0 - t * 0.3) * 1.5, 0.0, 1.0)); }',
+    '    sh = 0.4 + 0.6 * sh; }',
+    '  vec3 col = pal(0.04 + 0.8 * x) * (0.12 + diff * sh) + pal(0.97) * spec * sh * (0.25 + 0.9 * x);',
+    '  col += pal(0.85) * pow(x, 6.0) * 0.25;',
     '  fragColor = vec4(col * 0.6, 1.0); }'
   ].join('\n'), true);
 
@@ -417,6 +433,7 @@
     this.relief = r.uniform(5, 9);
     this.lightSpeed = r.sign() * r.uniform(0.05, 0.12);
     this.nextSeed = r.uniform(6, 14);
+    this.aniso = r() < 0.4 ? 1 : 0;
     this.duration = [60, 100];
     this.b.bind();
     program('rd.init', RD_INIT_FS).use({ uSize: [w, h], uSeed: r.uniform(0, 1000), uMode: r.choice([0, 0, 0, 1, 2]) });
@@ -432,7 +449,7 @@
       seed = [this.r.uniform(0, this.w), this.r.uniform(0, this.h), this.r.uniform(3, 7), 1];
     }
     var n = Math.max(1, Math.round(12 * Math.min(2, dt * 30)));
-    var p = program('rd.step', RD_STEP_FS).use({ uFK: this.fk.value, uFK2: this.fk2.value, uVarScale: this.varScale, uTime: this.t });
+    var p = program('rd.step', RD_STEP_FS).use({ uFK: this.fk.value, uFK2: this.fk2.value, uVarScale: this.varScale, uTime: this.t, uAniso: this.aniso });
     for (var i = 0; i < n; i++) {
       this.b.bind();
       p.set({ uSrc: tex(0, this.a), uSeedPt: i === 0 ? seed : [0, 0, 0, 0] });
@@ -444,7 +461,7 @@
     this.out.bind();
     var la = this.t * this.lightSpeed;
     program('rd.show', RD_SHOW_FS).use({
-      uState: tex(0, this.a), uLight: [Math.cos(la), Math.sin(la), 0.9], uRelief: this.relief, uPal: this.pal
+      uState: tex(0, this.a), uLight: [Math.cos(la), Math.sin(la), 0.9], uRelief: this.relief, uPal: this.pal, uShadow: RAY ? 1 : 0
     });
     fullscreen();
   };
@@ -929,7 +946,10 @@
     ['Thomas', 'vec3(sin(p.y) - 0.208186 * p.x, sin(p.z) - 0.208186 * p.y, sin(p.x) - 0.208186 * p.z)', 4.0, [1.353, 1.353, 1.353], 0.3855],
     ['Halvorsen', 'vec3(-1.89 * p.x - 4.0 * p.y - 4.0 * p.z - p.y * p.y, -1.89 * p.y - 4.0 * p.z - 4.0 * p.x - p.z * p.z, -1.89 * p.z - 4.0 * p.x - 4.0 * p.y - p.x * p.x)', 0.6, [-2.91, -2.91, -2.91], 0.1029],
     ['Dadras', 'vec3(p.y - 3.0 * p.x + 2.7 * p.y * p.z, 1.7 * p.y - p.x * p.z + p.z, 2.0 * p.x * p.y - 9.0 * p.z)', 0.7, [-1.243, -1.986, 0.817], 0.0568],
-    ['Rossler', 'vec3(-p.y - p.z, p.x + 0.2 * p.y, 0.2 + p.z * (p.x - 5.7))', 2.2, [1.164, -1.471, 11.309], 0.0841]
+    ['Rossler', 'vec3(-p.y - p.z, p.x + 0.2 * p.y, 0.2 + p.z * (p.x - 5.7))', 2.2, [1.164, -1.471, 11.309], 0.0841],
+    ['Chen', 'vec3(35.0 * (p.y - p.x), -7.0 * p.x - p.x * p.z + 28.0 * p.y, p.x * p.y - 3.0 * p.z)', 0.253, [-0.563, -0.777, 28.752], 0.0318],
+    ['Four-Wing', 'vec3(0.2 * p.x + p.y * p.z, 0.01 * p.x - 0.4 * p.y - p.x * p.z, -p.z - p.x * p.y)', 12.8, [0.305, -0.47, 0.301], 0.3295],
+    ['Sprott B', 'vec3(0.4 * p.y * p.z, p.x - p.y, 1.2 - p.x * p.y)', 4.83, [-0.444, -0.219, -0.441], 0.1358]
   ];
   var CHAOS_FIELD = CHAOS.map(function (s, i) { return 'vec3 f' + i + '(vec3 p) { return ' + s[1] + '; }'; }).join('\n') + [
     '',
@@ -1449,6 +1469,776 @@
     this.points(null, this.n);
   };
 
+  // ============================================================== Cymatics
+  // Sand on a vibrating plate (Chladni, 1787; the physics behind a steelpan
+  // note). Grains are thrown about where the plate moves and come to rest on
+  // the nodal lines, where it doesn't. The plate glides from one mode to the
+  // next, so the figure dissolves and redraws itself.
+  function besselJ(n, x) {   // (1/2π)∫ cos(nτ − x sin τ) dτ, exact enough for x < 30
+    var s = 0, N = 64;
+    for (var i = 0; i < N; i++) { var t = i * 2 * Math.PI / N; s += Math.cos(n * t - x * Math.sin(t)); }
+    return s / N;
+  }
+  var BESSEL_ZEROS = {};
+  function besselZero(n, k) {   // k-th positive zero of J_n
+    var key = n + ':' + k;
+    if (BESSEL_ZEROS[key]) return BESSEL_ZEROS[key];
+    var found = 0, x = 0.5, prev = besselJ(n, x);
+    while (x < 40) {
+      var nx = x + 0.05, v = besselJ(n, nx);
+      if (prev * v < 0) {
+        var lo = x, hi = nx;
+        for (var i = 0; i < 40; i++) { var m = (lo + hi) / 2; if (besselJ(n, lo) * besselJ(n, m) <= 0) hi = m; else lo = m; }
+        if (++found === k) return (BESSEL_ZEROS[key] = (lo + hi) / 2);
+      }
+      x = nx; prev = v;
+    }
+    return 10;
+  }
+  var CY_MODE = [
+    'uniform vec4 uModeA, uModeB; uniform float uMix; uniform int uShape; uniform vec2 uWorld;',
+    'float besselJ(float n, float x) { float s = 0.0; for (int i = 0; i < 28; i++) { float t = float(i) * TAU / 28.0;',
+    '  s += cos(n * t - x * sin(t)); } return s / 28.0; }',
+    // uShape 0: rectangular plate, u = cos(nπx)cos(mπy) ± cos(mπx)cos(nπy)
+    // uShape 1: circular membrane (a drum, or one note of a pan), u = J_n(k r) cos(nθ + φ)
+    'float plate(vec4 m, vec2 p) {',
+    '  if (uShape == 0) { vec2 q = p / uWorld;',
+    '    return cos(m.x * PI * q.x) * cos(m.y * PI * q.y) + m.w * cos(m.y * PI * q.x) * cos(m.x * PI * q.y); }',
+    '  vec2 c = (p - uWorld * 0.5) / 0.47; float r = length(c);',
+    '  if (r > 1.0) return 0.0;',
+    '  return 2.2 * besselJ(m.x, m.y * r) * cos(m.x * atan(c.y, c.x) + m.z); }',
+    'float field(vec2 p) { return mix(plate(uModeA, p), plate(uModeB, p), uMix); }',
+    ''
+  ].join('\n');
+  var CY_FIELD_FS = frag(CY_MODE + 'void main() { fragColor = vec4(field(vUv * uWorld), 0.0, 0.0, 1.0); }');
+  var CY_INIT_FS = fragMRT([
+    'uniform uint uSeed; uniform vec2 uWorld;',
+    'void main() { uint s = pcg(indexOf(ivec2(gl_FragCoord.xy)) * 747796405u + uSeed);',
+    '  outA = vec4(vec2(rnd(s), rnd(s)) * uWorld, 0.0, 0.0); outB = vec4(0.0); }'
+  ].join('\n'));
+  var CY_STEP_FS = fragMRT([
+    'uniform sampler2D uA, uField; uniform vec2 uWorld; uniform uint uSeed, uFrame; uniform int uShape;',
+    'uniform float uKick, uDrift;',
+    'float U(vec2 p) { return texture(uField, p / uWorld).r; }',
+    'void main() {',
+    '  ivec2 c = ivec2(gl_FragCoord.xy); vec4 a = texelFetch(uA, c, 0); vec2 p = a.xy;',
+    '  uint s = pcg(indexOf(c) * 9781u + uFrame * 6271u + uSeed);',
+    '  float u = U(p), A = abs(u); const float e = 0.004;',
+    '  vec2 g = vec2(U(p + vec2(e, 0.0)) * U(p + vec2(e, 0.0)) - U(p - vec2(e, 0.0)) * U(p - vec2(e, 0.0)),',
+    '                U(p + vec2(0.0, e)) * U(p + vec2(0.0, e)) - U(p - vec2(0.0, e)) * U(p - vec2(0.0, e))) / (2.0 * e);',
+    // thrown about in proportion to the local amplitude, sliding down towards the nodes
+    '  p += randGauss(s) * uKick * A - g * uDrift;',
+    '  if (uShape == 0) { p = abs(p); p = uWorld - abs(uWorld - p); }',
+    '  else { vec2 d = p - uWorld * 0.5; float r = length(d); if (r > 0.47) p = uWorld * 0.5 + d / r * (0.94 - r); }',
+    '  outA = vec4(p, A, 0.0); outB = vec4(0.0); }'
+  ].join('\n'));
+  var CY_SPLAT_VS = HEAD + [
+    'uniform sampler2D uA; uniform int uPW; uniform vec2 uWorld;',
+    'void main() { vec4 a = texelFetch(uA, ivec2(gl_VertexID % uPW, gl_VertexID / uPW), 0);',
+    '  gl_Position = vec4(a.xy / uWorld * 2.0 - 1.0, 0.0, 1.0); gl_PointSize = 1.0; }'
+  ].join('\n');
+  var CY_SHOW_FS = frag([
+    'uniform sampler2D uCount, uField; uniform float uRef; uniform int uShape; uniform vec2 uWorld;',
+    'void main() {',
+    '  float n = texture(uCount, vUv).r; float v = clamp(log(1.0 + n) / log(1.0 + uRef), 0.0, 1.3);',
+    '  float u = texture(uField, vUv).r; vec2 p = vUv * uWorld;',
+    '  float plateMask = 1.0;',
+    '  if (uShape == 1) { float r = length(p - uWorld * 0.5) / 0.47; plateMask = smoothstep(1.02, 0.98, r);',
+    '    plateMask += 0.25 * exp(-pow((r - 1.0) * 60.0, 2.0)); }',
+    // the plate itself: a faint sheen where it moves
+    '  vec3 col = pal(0.18) * (0.05 + 0.10 * abs(u)) * plateMask;',
+    '  col += pal(0.35 + 0.6 * v) * v * v * 1.1;',
+    '  fragColor = vec4(col, 1.0); }'
+  ].join('\n'), true);
+
+  var Cymatics = extend(function Cymatics(r, w, h) {
+    Scene.call(this, r, w, h);
+    particles(this, Math.min(1 << 18, Math.max(1 << 16, w * h * 0.16)), 2);
+    this.world = [this.aspect, 1];
+    this.shape = r() < 0.55 ? 0 : 1;
+    this.fw = Math.max(64, w >> 1); this.fh = Math.max(64, h >> 1);
+    this.field = this.keep(new Target(this.fw, this.fh, F16, gl.LINEAR));
+    this.count2 = this.keep(new Target(w, h, F16, gl.NEAREST));
+    this.seed = r.bits();
+    this.frame = 0;
+    this.modeA = this.pickMode(null); this.modeB = this.modeA;
+    this.mix = 0; this.gliding = -1;
+    this.nextMode = r.uniform(9, 14);
+    this.duration = [55, 90];
+    this.src.bind();
+    program('cy.init', CY_INIT_FS).use({ uPW: PW, uSeed: this.seed, uWorld: this.world });
+    fullscreen();
+  }, 'Cymatics', 1.0, 'cymatics');
+  Cymatics.prototype.pickMode = function (prev) {
+    var r = this.r;
+    for (var tries = 0; tries < 50; tries++) {
+      var m;
+      if (this.shape === 0) {
+        var n = 1 + Math.floor(r() * 8), k = 1 + Math.floor(r() * 9);
+        if (n === k) continue;
+        if (prev && Math.abs(n - prev.n) + Math.abs(k - prev.m) > 4) continue;
+        m = { n: n, m: k, sign: r.sign(), v: [n, k, 0, r.sign()] };
+      } else {
+        var a = 1 + Math.floor(r() * 7), z = 2 + Math.floor(r() * 4);
+        if (prev && Math.abs(a - prev.n) + Math.abs(z - prev.m) > 3) continue;
+        var kz = besselZero(a, z);
+        m = { n: a, m: z, k: kz, v: [a, kz, r.uniform(0, Math.PI * 2), 0] };
+      }
+      if (prev && m.n === prev.n && m.m === prev.m) continue;
+      return m;
+    }
+    return this.shape === 0 ? { n: 2, m: 5, sign: -1, v: [2, 5, 0, -1] } : { n: 2, m: 2, k: besselZero(2, 2), v: [2, besselZero(2, 2), 0, 0] };
+  };
+  // relative frequency of a mode: n² + m² for the plate, the Bessel zero for the membrane
+  Cymatics.prototype.freq = function (m) { return this.shape === 0 ? m.n * m.n + m.m * m.m : m.k; };
+  Cymatics.prototype.step = function (dt) {
+    this.dt = dt;
+    if (this.gliding < 0 && this.t > this.nextMode) {
+      this.modeB = this.pickMode(this.modeA);
+      this.gliding = 0;
+    }
+    if (this.gliding >= 0) {
+      this.gliding += dt / 2.5;
+      this.mix = smooth(Math.min(1, this.gliding));
+      if (this.gliding >= 1) { this.modeA = this.modeB; this.mix = 0; this.gliding = -1; this.nextMode = this.t + this.r.uniform(9, 15); }
+    }
+    var modes = { uModeA: this.modeA.v, uModeB: this.modeB.v, uMix: this.mix, uShape: this.shape, uWorld: this.world };
+    this.field.bind();
+    program('cy.field', CY_FIELD_FS).use(modes);
+    fullscreen();
+    var k = Math.min(2, dt * 30);
+    this.dst.bind();
+    program('cy.step', CY_STEP_FS).use({
+      uA: tex(0, this.src.tex[0]), uField: tex(1, this.field), uPW: PW, uWorld: this.world, uSeed: this.seed,
+      uFrame: this.frame, uShape: this.shape, uKick: 0.0045 * k, uDrift: 0.0006 * k
+    });
+    fullscreen();
+    flip(this);
+    this.frame++;
+  };
+  Cymatics.prototype.draw = function () {
+    this.count2.bind();
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    program('cy.splat', ZERO_FS.replace('vec4(0.0)', 'vec4(1.0)'), CY_SPLAT_VS).use({ uA: tex(0, this.src.tex[0]), uPW: PW, uWorld: this.world });
+    gl.drawArrays(gl.POINTS, 0, this.count);
+    gl.disable(gl.BLEND);
+    var area = this.shape === 0 ? this.w * this.h : Math.PI * Math.pow(0.47 * this.h, 2);
+    this.out.bind();
+    program('cy.show', CY_SHOW_FS).use({
+      uCount: tex(0, this.count2), uField: tex(1, this.field), uRef: this.count / area * 5, uShape: this.shape,
+      uWorld: this.world, uPal: this.pal
+    });
+    fullscreen();
+  };
+
+  // ================================================================ Turing
+  // Jonathan McCabe's multi-scale Turing patterns (2010). One substance, and
+  // at every pixel several activator/inhibitor pairs (a small blur against a
+  // larger one) at different scales. The scale whose two blurs agree most
+  // wins, and pushes the value up or down. Each scale has a colour, and a
+  // pixel's colour drifts towards the colour of the scale that keeps winning.
+  var TU_STEP_FS = frag([
+    'uniform sampler2D uSrc; uniform vec2 uTexel; uniform float uRA[5], uRI[5], uStep[5], uW[5]; uniform vec3 uCol[5];',
+    'uniform int uN;',
+    'float disc(vec2 uv, float r) {',   // mean over a disc of radius r texels, from the mip level that suits it
+    '  float lod = log2(max(1.0, r * 0.55)); vec2 px = uTexel * r;',
+    '  float s = 2.0 * textureLod(uSrc, uv, lod).r;',
+    '  for (int i = 0; i < 6; i++) { float a = float(i) * TAU / 6.0 + 0.3; s += textureLod(uSrc, uv + vec2(cos(a), sin(a)) * px * 0.5, lod).r; }',
+    '  for (int i = 0; i < 8; i++) { float a = float(i) * TAU / 8.0; s += textureLod(uSrc, uv + vec2(cos(a), sin(a)) * px * 0.92, lod).r; }',
+    '  return s / 16.0; }',
+    'void main() {',
+    '  vec2 uv = vUv; vec4 c = textureLod(uSrc, uv, 0.0);',
+    '  float best = 1e9, push = 0.0; int win = 0;',
+    '  for (int i = 0; i < 5; i++) { if (i >= uN) break;',
+    '    float d = disc(uv, uRA[i]) - disc(uv, uRI[i]); float v = abs(d) * uW[i];',
+    '    if (v < best) { best = v; push = sign(d) * uStep[i]; win = i; } }',
+    '  float v = clamp(c.r + push, -1.0, 1.0);',
+    '  vec3 col = mix(c.gba, uCol[win], 0.04);',
+    '  fragColor = vec4(v, col); }'
+  ].join('\n'));
+  var TU_INIT_FS = frag([
+    'uniform float uSeed;',
+    'void main() { vec2 p = gl_FragCoord.xy; fragColor = vec4(hash12(p + uSeed) * 2.0 - 1.0, 0.0, 0.0, 0.0); }'
+  ].join('\n'));
+  var TU_SHOW_FS = frag([
+    'uniform sampler2D uSrc; uniform vec2 uTexel; uniform vec3 uLight; uniform float uShadow;',
+    'void main() {',
+    '  vec4 c = texture(uSrc, vUv); float v = 0.5 + 0.5 * c.r;',
+    '  float l = texture(uSrc, vUv - vec2(uTexel.x, 0.0)).r, r = texture(uSrc, vUv + vec2(uTexel.x, 0.0)).r;',
+    '  float d = texture(uSrc, vUv - vec2(0.0, uTexel.y)).r, u = texture(uSrc, vUv + vec2(0.0, uTexel.y)).r;',
+    '  vec3 n = normalize(vec3((l - r) * 2.0, (d - u) * 2.0, 1.0));',
+    '  float sh = 1.0;',
+    '  if (uShadow > 0.5) { vec2 dir = normalize(uLight.xy); float h0 = v * 6.0;',
+    '    for (int k = 1; k <= 20; k++) { float t = float(k) * 2.0; float hq = (0.5 + 0.5 * texture(uSrc, vUv + dir * t * uTexel).r) * 6.0;',
+    '      sh = min(sh, clamp(1.0 - (hq - h0 - t * 0.25), 0.0, 1.0)); }',
+    '    sh = 0.35 + 0.65 * sh; }',
+    '  float light = (0.55 + 0.6 * max(dot(n, normalize(uLight)), 0.0)) * sh;',
+    '  vec3 col = c.gba * (0.08 + 1.1 * v * v) * light;',
+    '  fragColor = vec4(col * 0.75, 1.0); }'
+  ].join('\n'));
+
+  function mipTarget(w, h) {
+    var t = new Target(w, h, F16, gl.LINEAR, gl.REPEAT);
+    gl.bindTexture(gl.TEXTURE_2D, t.tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    return t;
+  }
+  var Turing = extend(function Turing(r, w, h) {
+    Scene.call(this, r, w, h);
+    var k = Math.min(1, Math.sqrt(0.45e6 / (w * h)));
+    this.tw = Math.max(128, Math.round(w * k)); this.th = Math.max(96, Math.round(h * k));
+    this.a = this.keep(mipTarget(this.tw, this.th));
+    this.b = this.keep(mipTarget(this.tw, this.th));
+    // McCabe's example scales (for a 1024 px field): activators 100, 20, 10, 5, 1 against inhibitors twice as wide
+    var u = this.th / 1024, base = r.choice([[100, 20, 10, 5, 1], [80, 40, 16, 6, 2], [120, 50, 22, 9, 3]]);
+    this.ra = base.map(function (x) { return Math.max(1.2, x * u * r.uniform(0.85, 1.15)); });
+    this.ratio = r.uniform(1.8, 2.6);
+    this.steps = [0.05, 0.04, 0.03, 0.02, 0.01].map(function (x) { return x * r.uniform(0.8, 1.2); });
+    this.weights = [1, 1, 1, 1, 1].map(function () { return r.uniform(0.85, 1.15); });
+    var pal = this.pal, cols = [];
+    for (var i = 0; i < 5; i++) {
+      var x = 0.3 + 0.65 * ((i * 0.37 + r()) % 1);
+      var j = Math.min(4, Math.floor(x * 5)), f = x * 5 - j;
+      for (var ch = 0; ch < 3; ch++) cols.push(pal[j * 3 + ch] + (pal[(j + 1) * 3 + ch] - pal[j * 3 + ch]) * f);
+    }
+    this.cols = cols;
+    this.breathe = new Drift(r, 0.9, 1.12, [20, 45]);
+    this.lightSpeed = r.sign() * r.uniform(0.05, 0.1);
+    this.duration = [55, 90];
+    this.a.bind();
+    program('tu.init', TU_INIT_FS).use({ uSeed: r.uniform(0, 1000) });
+    fullscreen();
+    gl.bindTexture(gl.TEXTURE_2D, this.a.tex); gl.generateMipmap(gl.TEXTURE_2D);
+  }, 'Turing', 1.0, 'turing');
+  Turing.prototype.step = function (dt) {
+    this.breathe.update(dt);
+    var k = this.breathe.value, ratio = this.ratio;
+    var p = program('tu.step', TU_STEP_FS).use({
+      uTexel: [1 / this.tw, 1 / this.th], uN: 5, uStep: this.steps, uW: this.weights, uCol: this.cols,
+      uRA: this.ra.map(function (x) { return x * k; }), uRI: this.ra.map(function (x) { return x * k * ratio; })
+    });
+    var n = this.t < 3 ? 3 : 1;   // settle the noise quickly, then evolve at a calm pace
+    for (var i = 0; i < n; i++) {
+      this.b.bind();
+      p.set({ uSrc: tex(0, this.a) });
+      fullscreen();
+      gl.bindTexture(gl.TEXTURE_2D, this.b.tex); gl.generateMipmap(gl.TEXTURE_2D);
+      var t = this.a; this.a = this.b; this.b = t;
+    }
+  };
+  Turing.prototype.draw = function () {
+    this.out.bind();
+    var la = this.t * this.lightSpeed;
+    program('tu.show', TU_SHOW_FS).use({ uSrc: tex(0, this.a), uTexel: [1 / this.tw, 1 / this.th], uLight: [Math.cos(la), Math.sin(la), 1.2], uShadow: RAY ? 1 : 0 });
+    fullscreen();
+  };
+
+  // =========================================================== Free Energy
+  // Karl Friston's "primordial soup" ("Life as we know it", 2013): particles
+  // that each carry a Lorenz attractor as their internal chemistry, pulled
+  // together by neighbours whose chemistry is in step with theirs. They
+  // self-assemble into a body, and a Markov blanket forms: an inner core
+  // that only touches the outside world through a boundary layer.
+  // Colours: inner core, blanket (the boundary), and the outside.
+  var SOUP_W = 64;
+  var SOUP_INIT_FS = fragMRT([
+    'uniform uint uSeed; uniform vec2 uWorld;',
+    'void main() { uint s = pcg(indexOf(ivec2(gl_FragCoord.xy)) * 2654435761u + uSeed);',
+    '  vec2 p = uWorld * 0.5 + (vec2(rnd(s), rnd(s)) - 0.5) * uWorld * vec2(0.8, 0.85);',
+    '  vec3 l = vec3(rnd(s) * 30.0 - 15.0, rnd(s) * 40.0 - 20.0, rnd(s) * 30.0 + 10.0);',
+    '  outA = vec4(p, 0.0, 0.0); outB = vec4(l, 0.0); }'
+  ].join('\n'));
+  var SOUP_STEP_FS = fragMRT([
+    'uniform sampler2D uA, uB; uniform int uN; uniform vec2 uWorld; uniform float uDt, uR0, uR, uAttract, uCouple, uTempo;',
+    'vec3 lorenz(vec3 x) { return vec3(10.0 * (x.y - x.x), x.x * (28.0 - x.z) - x.y, x.x * x.y - 2.6666667 * x.z); }',
+    'void main() {',
+    '  ivec2 c = ivec2(gl_FragCoord.xy); vec4 a = texelFetch(uA, c, 0), b = texelFetch(uB, c, 0);',
+    '  vec2 p = a.xy, v = a.zw; vec3 x = b.xyz; int me = indexOf(c) == 0u ? 0 : int(indexOf(c));',
+    '  vec2 f = vec2(0.0), dirSum = vec2(0.0); vec3 pull = vec3(0.0); float wsum = 0.0, n = 0.0;',
+    '  for (int j = 0; j < 4096; j++) { if (j >= uN) break; if (j == me) continue;',
+    '    ivec2 cj = ivec2(j % ' + SOUP_W + ', j / ' + SOUP_W + '); vec2 d = texelFetch(uA, cj, 0).xy - p; float r = length(d);',
+    '    if (r < 1e-6) continue; vec2 dh = d / r;',
+    '    if (r > uR) continue;',   // a faint long-range pull, so the clumps merge into one body
+    '    vec3 xj = texelFetch(uB, cj, 0).xyz;',
+    '    float w = 1.0 - r / uR;',
+    // chemistry in step attracts, out of step repels; everything repels up close
+    '    float sim = exp(-dot(xj - x, xj - x) / 300.0);',
+    '    if (r < uR0) f -= dh * 1.5 * (uR0 - r) / (r + 0.002); else f += dh * uAttract * (sim - 0.3) * w;',
+    '    pull += (xj - x) * w; dirSum += dh * w; wsum += w; n += 1.0; }',
+    '  f -= (p - uWorld * 0.5) * 0.4;',                                // a weak pull to the middle
+    '  float fl = length(f); if (fl > 60.0) f *= 60.0 / fl;',
+    '  v = v * 0.86 + f * uDt; float vl = length(v); if (vl > 1.5) v *= 1.5 / vl; p += v * uDt;',
+    '  p = clamp(p, vec2(0.01), uWorld - 0.01);',
+    '  x += (lorenz(x) * uTempo + pull * uCouple / max(1.0, wsum)) * uDt;',
+    '  if (any(isnan(x)) || length(x) > 200.0) x = vec3(1.0, 1.0, 25.0);',             // internal dynamics, coupled to the neighbours
+    '  float asym = wsum > 0.0 ? length(dirSum) / wsum : 1.0;',          // near 1 at an edge, near 0 deep inside
+    '  outA = vec4(p, v); outB = vec4(x, min(n, 30.0) + min(asym, 0.99)); }'
+  ].join('\n').replace('int me = indexOf(c) == 0u ? 0 : int(indexOf(c));', 'int me = int(indexOf(c));'));
+  var SOUP_VS = HEAD + COMMON + PAL + [
+    'uniform sampler2D uA, uB; uniform vec2 uWorld; uniform float uSize, uIntensity;',
+    'out vec3 vCol;',
+    'void main() {',
+    '  ivec2 c = ivec2(gl_VertexID % ' + SOUP_W + ', gl_VertexID / ' + SOUP_W + '); vec4 a = texelFetch(uA, c, 0), b = texelFetch(uB, c, 0);',
+    '  gl_Position = vec4(a.xy / uWorld * 2.0 - 1.0, 0.0, 1.0);',
+    '  float n = floor(b.w), asym = fract(b.w);',
+    '  float inner = smoothstep(5.0, 9.0, n) * smoothstep(0.45, 0.25, asym);',
+    '  float blanket = smoothstep(2.0, 5.0, n) * (1.0 - inner);',
+    '  float shimmer = 0.75 + 0.25 * sin(b.x * 0.25);',
+    '  vec3 col = pal(0.3) * 0.3;',                                     // outside: dim
+    '  col = mix(col, pal(0.9) * 1.1, blanket);',                        // the blanket: bright
+    '  col = mix(col, pal(0.45 + 0.15 * sin(b.z * 0.2)) * 0.5, inner);', // inside: deeper, shimmering with its chemistry
+    '  vCol = col * shimmer * uIntensity;',
+    '  gl_PointSize = uSize * (1.0 + 0.6 * blanket); }'
+  ].join('\n');
+
+  var Soup = extend(function Soup(r, w, h) {
+    Scene.call(this, r, w, h);
+    this.n = 2048;
+    this.world = [this.aspect, 1];
+    this.src = this.keep(new State(SOUP_W, this.n / SOUP_W, 2));
+    this.dst = this.keep(new State(SOUP_W, this.n / SOUP_W, 2));
+    this.attract = r.uniform(1.0, 1.6);
+    this.couple = r.uniform(0.9, 1.6);
+    this.tempo = r.uniform(0.5, 0.9);
+    this.r0 = 0.016; this.rr = 0.12;
+    this.trail = r.uniform(0.55, 0.7);
+    this.duration = [55, 90];
+    this.src.bind();
+    program('soup.init', SOUP_INIT_FS).use({ uPW: SOUP_W, uSeed: r.bits(), uWorld: this.world });
+    fullscreen();
+    for (var i = 0; i < 40; i++) this.step(1 / 30);
+    this.t = 0;
+  }, 'Free Energy', 0.9, 'soup');
+  Soup.prototype.step = function (dt) {
+    this.dt = dt;
+    var p = program('soup.step', SOUP_STEP_FS).use({
+      uPW: SOUP_W, uN: this.n, uWorld: this.world, uDt: 0.016 * Math.min(2, dt * 30), uR0: this.r0, uR: this.rr,
+      uAttract: this.attract, uCouple: this.couple, uTempo: this.tempo
+    });
+    for (var i = 0; i < 2; i++) {
+      this.dst.bind();
+      p.set({ uA: tex(0, this.src.tex[0]), uB: tex(1, this.src.tex[1]) });
+      fullscreen();
+      flip(this);
+    }
+  };
+  Soup.prototype.draw = function () {
+    this.fade(this.trail);
+    program('soup.draw', GLOW_FS, SOUP_VS).use({
+      uA: tex(0, this.src.tex[0]), uB: tex(1, this.src.tex[1]), uWorld: this.world, uPal: this.pal,
+      uSize: Math.max(2, this.h * 0.0055), uIntensity: 0.3 * (1 - this.trail) / 0.4
+    });
+    this.points(null, this.n);
+  };
+
+  // ================================================================ Cosmos
+  // A particle universe: gravity alone turns an almost even scatter of
+  // matter into the cosmic web of filaments, walls, voids and halos. Gravity
+  // is solved on a grid (particle-mesh): splat the mass, solve Poisson's
+  // equation for the potential, and move every particle down its slope.
+  var CO_INIT_FS = fragMRT([
+    'uniform uint uSeed; uniform vec2 uWorld; uniform vec4 uModes[24]; uniform float uAmp; uniform int uNX; uniform int uN;',
+    'vec2 gradPsi(vec2 q) { vec2 g = vec2(0.0);',   // a periodic random field from a handful of plane waves
+    '  for (int i = 0; i < 24; i++) { vec4 m = uModes[i]; g += m.z * m.xy * cos(dot(m.xy, q) + m.w); } return g; }',
+    'void main() {',
+    '  int i = int(indexOf(ivec2(gl_FragCoord.xy))); uint s = pcg(uint(i) * 2246822519u + uSeed);',
+    '  int nx = uNX, ny = (uN + nx - 1) / nx;',
+    '  vec2 q = (vec2(float(i % nx), float(i / nx)) + 0.5 + (vec2(rnd(s), rnd(s)) - 0.5) * 0.6) / vec2(float(nx), float(ny)) * uWorld;',
+    '  vec2 d = gradPsi(q) * uAmp;',   // Zel'dovich: displacement and velocity both follow the gradient of the field
+    '  outA = vec4(mod(q + d, uWorld), d * 0.6); outB = vec4(0.0); }'
+  ].join('\n'));
+  var CO_SPLAT_VS = HEAD + [
+    'uniform sampler2D uA; uniform int uPW; uniform vec2 uWorld; uniform float uSize;',
+    'void main() { vec4 a = texelFetch(uA, ivec2(gl_VertexID % uPW, gl_VertexID / uPW), 0);',
+    '  gl_Position = vec4(a.xy / uWorld * 2.0 - 1.0, 0.0, 1.0); gl_PointSize = uSize; }'
+  ].join('\n');
+  var ONE_FS = HEAD + 'uniform float uMass;\nout vec4 fragColor;\nvoid main() { fragColor = vec4(uMass, 0.0, 0.0, 1.0); }';
+  var CO_JACOBI_FS = frag([
+    'uniform sampler2D uPhi, uRho; uniform float uG, uH2;',
+    'void main() { ivec2 p = ivec2(gl_FragCoord.xy); ivec2 sz = textureSize(uPhi, 0);',
+    '  #define P(dx, dy) texelFetch(uPhi, (p + ivec2(dx, dy) + sz) % sz, 0).r',
+    '  float src = uG * (texelFetch(uRho, p, 0).r - 1.0);',
+    '  fragColor = vec4((P(1, 0) + P(-1, 0) + P(0, 1) + P(0, -1) - uH2 * src) * 0.25, 0.0, 0.0, 1.0); }'
+  ].join('\n'));
+  var CO_ACCEL_FS = frag([
+    'uniform sampler2D uPhi; uniform float uInvH;',
+    'void main() { ivec2 p = ivec2(gl_FragCoord.xy); ivec2 sz = textureSize(uPhi, 0);',
+    '  #define P(dx, dy) texelFetch(uPhi, (p + ivec2(dx, dy) + sz) % sz, 0).r',
+    // also remove the mean potential slowly so the solve never drifts
+    '  fragColor = vec4(-(P(1, 0) - P(-1, 0)) * 0.5 * uInvH, -(P(0, 1) - P(0, -1)) * 0.5 * uInvH, 0.0, 1.0); }'
+  ].join('\n'));
+  var CO_STEP_FS = fragMRT([
+    'uniform sampler2D uA, uAcc; uniform vec2 uWorld; uniform float uDt, uDrag;',
+    'void main() { ivec2 c = ivec2(gl_FragCoord.xy); vec4 a = texelFetch(uA, c, 0);',
+    '  vec2 acc = texture(uAcc, a.xy / uWorld).xy;',
+    '  vec2 v = a.zw * (1.0 - uDrag * uDt) + acc * uDt; vec2 p = mod(a.xy + v * uDt, uWorld);',
+    '  outA = vec4(p, v); outB = vec4(0.0); }'
+  ].join('\n'));
+  var CO_SHOW_FS = frag([
+    'uniform sampler2D uCount; uniform float uRef; uniform vec2 uTexel;',
+    'float C(vec2 o) { return texture(uCount, vUv + o * uTexel).r; }',
+    'void main() {',
+    '  float n = C(vec2(0.0)) * 0.4 + (C(vec2(1, 0)) + C(vec2(-1, 0)) + C(vec2(0, 1)) + C(vec2(0, -1))) * 0.1',
+    '    + (C(vec2(1, 1)) + C(vec2(-1, 1)) + C(vec2(1, -1)) + C(vec2(-1, -1))) * 0.05;',
+    '  float v = clamp(log(1.0 + n) / log(1.0 + uRef), 0.0, 1.4);',
+    '  vec3 col = pal(clamp(0.15 + 0.8 * v, 0.0, 1.0)) * (0.03 + 0.5 * v + 0.7 * v * v);',
+    '  col += pal(0.98) * pow(max(v - 0.85, 0.0), 2.0) * 3.0;',       // halos burn white
+    '  fragColor = vec4(col, 1.0); }'
+  ].join('\n'), true);
+
+  var Cosmos = extend(function Cosmos(r, w, h) {
+    Scene.call(this, r, w, h);
+    particles(this, Math.min(1 << 18, Math.max(1 << 16, w * h * 0.2)), 2);
+    this.world = [this.aspect, 1];
+    this.gh = 160; this.gw = Math.round(160 * this.aspect);
+    this.rho = this.keep(new Target(this.gw, this.gh, F16, gl.NEAREST, gl.REPEAT));
+    this.phiA = this.keep(new Target(this.gw, this.gh, F32, gl.NEAREST, gl.REPEAT));
+    this.phiB = this.keep(new Target(this.gw, this.gh, F32, gl.NEAREST, gl.REPEAT));
+    this.acc = this.keep(new Target(this.gw, this.gh, F16, gl.LINEAR, gl.REPEAT));
+    this.dens = this.keep(new Target(w, h, F16, gl.LINEAR));
+    // a red spectrum of plane waves: most power on large scales, periodic in the world
+    var modes = [], L = this.world;
+    for (var i = 0; i < 24; i++) {
+      var kx = Math.round(r.uniform(-16, 16)), ky = Math.round(r.uniform(-12, 12));
+      if (!kx && !ky) kx = 1;
+      var k = [kx * 2 * Math.PI / L[0], ky * 2 * Math.PI / L[1]], kk = Math.hypot(k[0], k[1]);
+      modes.push(k[0], k[1], Math.pow(kk, -1.7), r.uniform(0, Math.PI * 2));
+    }
+    this.G = r.uniform(0.35, 0.55);
+    this.drag = r.uniform(0.25, 0.45);
+    this.duration = [60, 95];
+    var nx = Math.round(Math.sqrt(this.count * this.aspect));
+    this.src.bind();
+    program('co.init', CO_INIT_FS).use({ uPW: PW, uSeed: r.bits(), uWorld: this.world, uModes: modes, uAmp: r.uniform(0.12, 0.2), uNX: nx, uN: this.count });
+    fullscreen();
+  }, 'Cosmos', 1.0, 'cosmos');
+  Cosmos.prototype.step = function (dt) {
+    this.dt = dt;
+    // mass onto the grid: mean density 1
+    this.rho.bind();
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    program('co.splat', ONE_FS, CO_SPLAT_VS).use({ uA: tex(0, this.src.tex[0]), uPW: PW, uWorld: this.world, uSize: 1, uMass: this.gw * this.gh / this.count });
+    gl.drawArrays(gl.POINTS, 0, this.count);
+    gl.disable(gl.BLEND);
+    // Poisson: ∇²φ = G(ρ − 1), warm-started from last frame's φ
+    var grow = smooth(Math.min(1, this.t / 80)), h = 1 / this.gh;
+    var jp = program('co.jacobi', CO_JACOBI_FS).use({ uRho: tex(1, this.rho), uG: this.G * (0.25 + 0.75 * grow), uH2: h * h });
+    for (var i = 0; i < 30; i++) {
+      this.phiB.bind();
+      jp.set({ uPhi: tex(0, this.phiA) });
+      fullscreen();
+      var t = this.phiA; this.phiA = this.phiB; this.phiB = t;
+    }
+    this.acc.bind();
+    program('co.accel', CO_ACCEL_FS).use({ uPhi: tex(0, this.phiA), uInvH: this.gh });
+    fullscreen();
+    this.dst.bind();
+    program('co.step', CO_STEP_FS).use({
+      uA: tex(0, this.src.tex[0]), uAcc: tex(1, this.acc), uWorld: this.world, uDt: Math.min(dt, 0.05) * 0.35, uDrag: this.drag
+    });
+    fullscreen();
+    flip(this);
+  };
+  Cosmos.prototype.draw = function () {
+    this.dens.bind();
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    program('co.splat', ONE_FS, CO_SPLAT_VS).use({ uA: tex(0, this.src.tex[0]), uPW: PW, uWorld: this.world, uSize: 1, uMass: 1 });
+    gl.drawArrays(gl.POINTS, 0, this.count);
+    gl.disable(gl.BLEND);
+    this.out.bind();
+    program('co.show', CO_SHOW_FS).use({ uCount: tex(0, this.dens), uRef: this.count / (this.w * this.h) * 25, uTexel: [1 / this.w, 1 / this.h], uPal: this.pal });
+    fullscreen();
+  };
+
+  // ================================================================ Liquid
+  // A particle fluid in a tank, solved the way production fluid tools do
+  // (FLIP/PIC): particles carry the water, a grid enforces that it can't be
+  // squeezed. Each step: particles to grid, gravity, pressure solve so the
+  // flow is divergence-free, grid back to particles. The tank tilts slowly.
+  var LQ_P2G_VS = HEAD + [
+    'uniform sampler2D uA; uniform int uPW; uniform vec2 uGrid;',
+    'flat out vec2 vG; flat out vec2 vV;',
+    'void main() { vec4 a = texelFetch(uA, ivec2(gl_VertexID % uPW, gl_VertexID / uPW), 0);',
+    '  vG = a.xy; vV = a.zw; gl_Position = vec4(a.xy / uGrid * 2.0 - 1.0, 0.0, 1.0); gl_PointSize = 2.0; }'
+  ].join('\n');
+  var LQ_P2G_FS = HEAD + [
+    'flat in vec2 vG; flat in vec2 vV; out vec4 fragColor;',
+    'void main() { vec2 d = abs(gl_FragCoord.xy - vG); float w = max(0.0, 1.0 - d.x) * max(0.0, 1.0 - d.y);',
+    '  fragColor = vec4(vV * w, w, 0.0); }'
+  ].join('\n');
+  var LQ_FORCES_FS = frag([
+    'uniform sampler2D uSum; uniform vec2 uGravity; uniform float uDt;',
+    'void main() { ivec2 p = ivec2(gl_FragCoord.xy); ivec2 sz = textureSize(uSum, 0); vec4 s = texelFetch(uSum, p, 0);',
+    '  vec2 v = s.z > 1e-4 ? s.xy / s.z : vec2(0.0); vec2 old = v;',
+    '  if (s.z > 0.05) v += uGravity * uDt;',
+    '  if (p.x == 0 || p.x == sz.x - 1) v.x = 0.0; if (p.y == 0 || p.y == sz.y - 1) v.y = 0.0;',
+    '  fragColor = vec4(v, old); }'   // new velocity, and the one before forces (for FLIP)
+  ].join('\n'));
+  var LQ_DIV_FS = frag([
+    'uniform sampler2D uVel, uSum; uniform float uRest, uPush;',
+    'void main() { ivec2 p = ivec2(gl_FragCoord.xy); ivec2 sz = textureSize(uVel, 0);',
+    '  #define V(dx, dy) texelFetch(uVel, clamp(p + ivec2(dx, dy), ivec2(0), sz - 1), 0).xy',
+    '  float w = texelFetch(uSum, p, 0).z; float d = 0.0;',
+    '  if (w > 0.05) d = 0.5 * (V(1, 0).x - V(-1, 0).x + V(0, 1).y - V(0, -1).y) - uPush * max(0.0, w - uRest);',
+    '  fragColor = vec4(d, w, 0.0, 1.0); }'
+  ].join('\n'));
+  var LQ_JACOBI_FS = frag([
+    'uniform sampler2D uP, uDiv;',
+    'void main() { ivec2 p = ivec2(gl_FragCoord.xy); ivec2 sz = textureSize(uP, 0); vec2 dw = texelFetch(uDiv, p, 0).xy;',
+    '  if (dw.y <= 0.05) { fragColor = vec4(0.0); return; }',   // air: free surface, p = 0
+    '  #define P(dx, dy) texelFetch(uP, clamp(p + ivec2(dx, dy), ivec2(0), sz - 1), 0).r',
+    '  fragColor = vec4((P(1, 0) + P(-1, 0) + P(0, 1) + P(0, -1) - dw.x) * 0.25, 0.0, 0.0, 1.0); }'
+  ].join('\n'));
+  var LQ_PROJECT_FS = frag([
+    'uniform sampler2D uP, uVel;',
+    'void main() { ivec2 p = ivec2(gl_FragCoord.xy); ivec2 sz = textureSize(uP, 0); vec4 v = texelFetch(uVel, p, 0);',
+    '  #define P(dx, dy) texelFetch(uP, clamp(p + ivec2(dx, dy), ivec2(0), sz - 1), 0).r',
+    '  v.xy -= 0.5 * vec2(P(1, 0) - P(-1, 0), P(0, 1) - P(0, -1));',
+    '  if (p.x == 0 || p.x == sz.x - 1) v.x = 0.0; if (p.y == 0 || p.y == sz.y - 1) v.y = 0.0;',
+    '  fragColor = v; }'
+  ].join('\n'));
+  var LQ_G2P_FS = fragMRT([
+    'uniform sampler2D uA, uVel; uniform vec2 uGrid; uniform float uDt, uFlip; uniform uint uSeed, uFrame;',
+    'void main() { ivec2 c = ivec2(gl_FragCoord.xy); vec4 a = texelFetch(uA, c, 0);',
+    '  vec4 g = texture(uVel, a.xy / uGrid);',   // xy: velocity after the solve, zw: before forces
+    '  vec2 v = mix(g.xy, a.zw + (g.xy - g.zw), uFlip);',
+    '  uint s = pcg(indexOf(c) * 9781u + uFrame * 6271u + uSeed);',
+    '  vec2 p = a.xy + g.xy * uDt + (vec2(rnd(s), rnd(s)) - 0.5) * 0.01;',
+    '  p = clamp(p, vec2(1.01), uGrid - 1.01);',
+    '  outA = vec4(p, v); outB = vec4(0.0); }'
+  ].join('\n'));
+  var LQ_DRAW_VS = HEAD + COMMON + PAL + [
+    'uniform sampler2D uA; uniform int uPW; uniform vec2 uGrid; uniform float uSize, uFast, uIntensity;',
+    'out vec3 vCol;',
+    'void main() { vec4 a = texelFetch(uA, ivec2(gl_VertexID % uPW, gl_VertexID / uPW), 0);',
+    '  float s = clamp(length(a.zw) / uFast, 0.0, 1.0);',
+    '  vCol = (pal(0.3 + 0.6 * s) + pal(0.98) * pow(s, 4.0) * 0.8) * uIntensity * (0.5 + 0.8 * s);',
+    '  gl_Position = vec4(a.xy / uGrid * 2.0 - 1.0, 0.0, 1.0); gl_PointSize = uSize; }'
+  ].join('\n');
+  var Liquid = extend(function Liquid(r, w, h) {
+    Scene.call(this, r, w, h);
+    this.gh = 72; this.gw = Math.round(72 * this.aspect);
+    this.grid = [this.gw, this.gh];
+    particles(this, this.gw * this.gh * 2.3, 2);
+    this.sum = this.keep(new Target(this.gw, this.gh, F16, gl.NEAREST));
+    this.vel = this.keep(new Target(this.gw, this.gh, F16, gl.LINEAR));
+    this.vel2 = this.keep(new Target(this.gw, this.gh, F16, gl.LINEAR));
+    this.div = this.keep(new Target(this.gw, this.gh, F16, gl.NEAREST));
+    this.pA = this.keep(new Target(this.gw, this.gh, F16, gl.NEAREST));
+    this.pB = this.keep(new Target(this.gw, this.gh, F16, gl.NEAREST));
+    this.rock = r.uniform(0.25, 0.4); this.rockRate = r.uniform(0.35, 0.6);
+    this.g = r.uniform(55, 75);
+    this.seed = r.bits(); this.frame = 0;
+    this.layout = r.choice([0, 1, 2]);   // dam break left, dam break right, a slab dropped in the middle
+    this.duration = [55, 90];
+    this.src.bind();
+    program('lq.init', fragMRT([
+      'uniform uint uSeed; uniform vec2 uGrid; uniform int uLayout, uN;',
+      'void main() { int i = int(indexOf(ivec2(gl_FragCoord.xy))); uint s = pcg(uint(i) * 2654435761u + uSeed);',
+      '  vec2 box = uLayout == 2 ? vec2(0.5, 0.42) : vec2(0.42, 0.85); vec2 o = uLayout == 0 ? vec2(0.0) : uLayout == 1 ? vec2(1.0 - box.x, 0.0) : vec2(0.25, 0.4);',
+      '  vec2 q = (o + vec2(rnd(s), rnd(s)) * box) * (uGrid - 2.2) + 1.1;',
+      '  outA = vec4(q, 0.0, 0.0); outB = vec4(0.0); }'
+    ].join('\n'))).use({ uPW: PW, uSeed: this.seed, uGrid: this.grid, uLayout: this.layout, uN: this.count });
+    fullscreen();
+  }, 'Liquid', 0.9, 'liquid');
+  Liquid.prototype.substep = function (dt, gravity) {
+    var G = this.grid;
+    this.sum.bind();
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    program('lq.p2g', LQ_P2G_FS, LQ_P2G_VS).use({ uA: tex(0, this.src.tex[0]), uPW: PW, uGrid: G });
+    gl.drawArrays(gl.POINTS, 0, this.count);
+    gl.disable(gl.BLEND);
+    this.vel.bind();
+    program('lq.forces', LQ_FORCES_FS).use({ uSum: tex(0, this.sum), uGravity: gravity, uDt: dt });
+    fullscreen();
+    this.div.bind();
+    program('lq.div', LQ_DIV_FS).use({ uVel: tex(0, this.vel), uSum: tex(1, this.sum), uRest: 7.0, uPush: 0.5 });
+    fullscreen();
+    var jp = program('lq.jacobi', LQ_JACOBI_FS).use({ uDiv: tex(1, this.div) });
+    for (var i = 0; i < 40; i++) {
+      this.pB.bind();
+      jp.set({ uP: tex(0, this.pA) });
+      fullscreen();
+      var t = this.pA; this.pA = this.pB; this.pB = t;
+    }
+    this.vel2.bind();
+    program('lq.project', LQ_PROJECT_FS).use({ uP: tex(0, this.pA), uVel: tex(1, this.vel) });
+    fullscreen();
+    this.dst.bind();
+    program('lq.g2p', LQ_G2P_FS).use({
+      uA: tex(0, this.src.tex[0]), uVel: tex(1, this.vel2), uPW: PW, uGrid: G, uDt: dt, uFlip: 0.93, uSeed: this.seed, uFrame: this.frame
+    });
+    fullscreen();
+    flip(this);
+    this.frame++;
+  };
+  Liquid.prototype.step = function (dt) {
+    this.dt = dt;
+    // rock the tank: a sideways push that swells and fades
+    var a = this.rock * Math.sin(this.t * this.rockRate * 2 * Math.PI) * (0.6 + 0.4 * Math.sin(this.t * 0.11));
+    var gravity = [Math.sin(a) * this.g, -Math.cos(a) * this.g];
+    var h = Math.min(dt, 1 / 20) / 2;
+    for (var i = 0; i < 2; i++) this.substep(h, gravity);
+  };
+  Liquid.prototype.draw = function () {
+    this.fade(0.45);
+    var cell = this.h / this.gh;
+    program('lq.draw', GLOW_FS, LQ_DRAW_VS).use({
+      uA: tex(0, this.src.tex[0]), uPW: PW, uGrid: this.grid, uSize: Math.max(2, cell * 0.55), uFast: this.g * 0.45,
+      uIntensity: 0.32, uPal: this.pal
+    });
+    this.points(null, this.count);
+  };
+
+  // ================================================================== math
+  // What each scene computes, shown when it starts and on request ("?").
+  // Plain HTML: <i> for variables, <sup>/<sub>, and a few Unicode symbols.
+  function num(x, d) { return (+x).toFixed(d === undefined ? 3 : d).replace(/^-/, '−'); }
+  var CHAOS_EQ = {
+    Lorenz: 'ẋ = 10(<i>y</i> − <i>x</i>)<br>ẏ = <i>x</i>(28 − <i>z</i>) − <i>y</i><br>ż = <i>xy</i> − 8⁄3 <i>z</i>',
+    Aizawa: 'ẋ = (<i>z</i> − 0.7)<i>x</i> − 3.5<i>y</i><br>ẏ = 3.5<i>x</i> + (<i>z</i> − 0.7)<i>y</i><br>ż = 0.6 + 0.95<i>z</i> − <i>z</i><sup>3</sup>⁄3 − (<i>x</i><sup>2</sup> + <i>y</i><sup>2</sup>)(1 + 0.25<i>z</i>) + 0.1<i>zx</i><sup>3</sup>',
+    Thomas: 'ẋ = sin <i>y</i> − <i>bx</i><br>ẏ = sin <i>z</i> − <i>by</i><br>ż = sin <i>x</i> − <i>bz</i>, &nbsp;<i>b</i> = 0.208186',
+    Halvorsen: 'ẋ = −1.89<i>x</i> − 4<i>y</i> − 4<i>z</i> − <i>y</i><sup>2</sup><br>ẏ = −1.89<i>y</i> − 4<i>z</i> − 4<i>x</i> − <i>z</i><sup>2</sup><br>ż = −1.89<i>z</i> − 4<i>x</i> − 4<i>y</i> − <i>x</i><sup>2</sup>',
+    Dadras: 'ẋ = <i>y</i> − 3<i>x</i> + 2.7<i>yz</i><br>ẏ = 1.7<i>y</i> − <i>xz</i> + <i>z</i><br>ż = 2<i>xy</i> − 9<i>z</i>',
+    Rossler: 'ẋ = −<i>y</i> − <i>z</i><br>ẏ = <i>x</i> + 0.2<i>y</i><br>ż = 0.2 + <i>z</i>(<i>x</i> − 5.7)',
+    Chen: 'ẋ = 35(<i>y</i> − <i>x</i>)<br>ẏ = −7<i>x</i> − <i>xz</i> + 28<i>y</i><br>ż = <i>xy</i> − 3<i>z</i>',
+    'Four-Wing': 'ẋ = 0.2<i>x</i> + <i>yz</i><br>ẏ = 0.01<i>x</i> − 0.4<i>y</i> − <i>xz</i><br>ż = −<i>z</i> − <i>xy</i>',
+    'Sprott B': 'ẋ = 0.4<i>yz</i><br>ẏ = <i>x</i> − <i>y</i><br>ż = 1.2 − <i>xy</i>'
+  };
+  var MATH = {
+    nebula: function () { return {
+      about: 'Fractal noise bent by more fractal noise, folded twice. Every wisp is a value of one function.',
+      eq: '<i>f</i>(<b>p</b>) = fbm(<b>p</b> + 4<b>r</b>)<br><b>r</b> = fbm<sub>2</sub>(<b>p</b> + 4<b>q</b>), &nbsp;<b>q</b> = fbm<sub>2</sub>(<b>p</b>)<br>fbm(<b>p</b>) = Σ<sub><i>k</i></sub> 2<sup>−<i>k</i></sup> noise(2<sup><i>k</i></sup><b>p</b>)',
+      credit: 'Domain warping, after Inigo Quilez' }; },
+    julia: function (s) { var c = s.c(); return {
+      about: 'Every pixel is a starting point z. Iterate; colour by how fast it escapes. The parameter c glides along the edge of the Mandelbrot set.',
+      eq: '<i>z</i><sub><i>n</i>+1</sub> = <i>z</i><sub><i>n</i></sub><sup>2</sup> + <i>c</i><br><i>c</i> = ' + num(c[0]) + (c[1] < 0 ? ' − ' : ' + ') + num(Math.abs(c[1])) + '<i>i</i><br>distance ≈ |<i>z</i>| ln|<i>z</i>| ⁄ |<i>z</i>′|',
+      credit: 'Gaston Julia, 1918' }; },
+    reaction: function (s) { var fk = s.fk.value; return {
+      about: 'Two chemicals: B feeds on A and reproduces; A is refilled, B is removed. Spots, stripes and mazes appear from almost nothing.' + (s.aniso ? ' Here diffusion runs faster along a flowing direction field, so the patterns stream.' : ''),
+      eq: '∂<i>A</i>⁄∂<i>t</i> = <i>D<sub>A</sub></i>∇<sup>2</sup><i>A</i> − <i>AB</i><sup>2</sup> + <i>f</i>(1 − <i>A</i>)<br>∂<i>B</i>⁄∂<i>t</i> = <i>D<sub>B</sub></i>∇<sup>2</sup><i>B</i> + <i>AB</i><sup>2</sup> − (<i>k</i> + <i>f</i>)<i>B</i><br><i>D<sub>A</sub></i> = 1, <i>D<sub>B</sub></i> = 0.5, <i>f</i> = ' + num(fk[0], 4) + ', <i>k</i> = ' + num(fk[1], 4) +
+        (s.aniso ? '<br>∇<sup>2</sup> → 0.4∇<sup>2</sup> + 1.2 ∂<sup>2</sup>⁄∂<i>s</i><sup>2</sup> &nbsp;(along <b>s</b>(<i>x</i>, <i>t</i>))' : ''),
+      credit: 'Gray–Scott model; rendering after Karl Sims' }; },
+    physarum: function (s) { return {
+      about: 'Half a million agents, each with three sensors. They turn towards the strongest scent, move, and leave scent behind, which spreads and fades: a slime mould solving transport networks.',
+      eq: 'turn towards max{<i>T</i>(<b>x</b> + <i>d</i><b>ĥ</b><sub>θ</sub>), <i>T</i>(<b>x</b> + <i>d</i><b>ĥ</b><sub>θ±α</sub>)}<br><b>x</b> ← <b>x</b> + <i>v</i><b>ĥ</b><sub>θ</sub>, &nbsp;<i>T</i>(<b>x</b>) += 1<br><i>T</i> ← λ · blur(<i>T</i>)',
+      credit: 'Jeff Jones, 2010 (' + s.count.toLocaleString() + ' agents here)' }; },
+    attractor: function (s) { var p = s.pCur; var cl = s.kind === 0; return {
+      about: 'One point, hopped millions of times through the same map. Where it lands most often glows brightest.',
+      eq: cl ? '<i>x</i>′ = sin(<i>ay</i>) + <i>c</i> cos(<i>ax</i>)<br><i>y</i>′ = sin(<i>bx</i>) + <i>d</i> cos(<i>by</i>)' : '<i>x</i>′ = sin(<i>ay</i>) − cos(<i>bx</i>)<br><i>y</i>′ = sin(<i>cx</i>) − cos(<i>dy</i>)',
+      credit: (cl ? 'Clifford Pickover' : 'Peter de Jong') + ' map, <i>a</i> = ' + num(p[0], 2) + ', <i>b</i> = ' + num(p[1], 2) + ', <i>c</i> = ' + num(p[2], 2) + ', <i>d</i> = ' + num(p[3], 2) }; },
+    silk: function (s) { return {
+      about: 'A quarter of a million particles ride the curl of a 3D noise field. A curl never converges, so the threads braid but never bunch up.',
+      eq: '<b>v</b> = ∇ × <b>ψ</b>(<b>x</b>, <i>t</i>), &nbsp;∇·<b>v</b> = 0<br><b>x</b> ← <b>x</b> + <b>v</b> Δ<i>t</i>',
+      credit: 'Curl noise, after Robert Bridson, 2007' }; },
+    chaos: function (s) { var n = CHAOS[s.mix < 0.5 ? s.a : s.b][0]; return {
+      about: 'A hundred thousand particles follow the same three equations. Nearby paths fly apart, yet all of them stay on one shape: a strange attractor. Every half minute the equations are blended into another system.',
+      eq: CHAOS_EQ[n] || '', credit: n + ' system' }; },
+    galaxy: function (s) { return {
+      about: 'Two or three galaxies on a close pass. Each star feels only the galactic cores, as in the classic simulations that first explained tidal tails.',
+      eq: '<b>ẍ</b><sub><i>i</i></sub> = Σ<sub><i>g</i></sub> <i>M<sub>g</sub></i>(<b>x</b><sub><i>g</i></sub> − <b>x</b><sub><i>i</i></sub>) ⁄ (|<b>x</b><sub><i>g</i></sub> − <b>x</b><sub><i>i</i></sub>|<sup>2</sup> + ε<sup>2</sup>)<sup>3⁄2</sup>',
+      credit: 'Toomre &amp; Toomre, 1972 (' + s.ng + ' cores)' }; },
+    ink: function (s) { return {
+      about: 'Water you can’t squeeze, stirred by unseen brushes that bleed ink into it.',
+      eq: '∂<b>u</b>⁄∂<i>t</i> + (<b>u</b>·∇)<b>u</b> = −∇<i>p</i> + <b>f</b> + ε(<b>N</b> × <b>ω</b>)<br>∇·<b>u</b> = 0, &nbsp;∂<i>c</i>⁄∂<i>t</i> + <b>u</b>·∇<i>c</i> = 0',
+      credit: 'Navier–Stokes; Jos Stam’s stable fluids, 1999' }; },
+    life: function (s) { return {
+      about: 'Species that attract or repel each other, and not symmetrically. Cells, worms and chasers emerge; the rules slowly mutate.',
+      eq: '<b>a</b><sub><i>i</i></sub> = Σ<sub><i>j</i></sub> <i>F</i>(<i>r<sub>ij</sub></i>⁄<i>r</i><sub>max</sub>) <b>r̂</b><sub><i>ij</i></sub><br><i>F</i>(<i>x</i>) = <i>x</i>⁄β − 1 &nbsp;(<i>x</i> &lt; β)<br><i>F</i>(<i>x</i>) = <i>M<sub>s<sub>i</sub>s<sub>j</sub></sub></i>(1 − |2<i>x</i> − 1 − β|⁄(1 − β)) &nbsp;(β ≤ <i>x</i> &lt; 1)',
+      credit: 'Particle Life, ' + s.k + ' species, β = 0.3' }; },
+    cymatics: function (s) { var m = s.gliding >= 0 ? s.modeB : s.modeA, rect = s.shape === 0; return {
+      about: 'Sand on a vibrating ' + (rect ? 'plate' : 'drum (one note of a steelpan behaves much like it)') + '. Grains are thrown off wherever it moves and settle where it stands still: the nodal lines.',
+      eq: rect ? '<i>u</i>(<i>x</i>, <i>y</i>) = cos(<i>n</i>π<i>x</i>) cos(<i>m</i>π<i>y</i>) ' + (m.sign > 0 ? '+' : '−') + ' cos(<i>m</i>π<i>x</i>) cos(<i>n</i>π<i>y</i>)<br><i>n</i> = ' + m.n + ', <i>m</i> = ' + m.m + ', &nbsp;<i>f</i> ∝ <i>n</i><sup>2</sup> + <i>m</i><sup>2</sup> = ' + (m.n * m.n + m.m * m.m)
+                : '<i>u</i>(<i>r</i>, θ) = <i>J<sub>n</sub></i>(<i>k<sub>nm</sub> r</i>) cos(<i>n</i>θ)<br><i>n</i> = ' + m.n + ', <i>k</i> = ' + num(m.k, 2) + ' (zero ' + m.m + ' of <i>J</i><sub>' + m.n + '</sub>), &nbsp;<i>f</i> ∝ <i>k</i>',
+      credit: 'Grains: <b>x</b> ← <b>x</b> + σ|<i>u</i>|<b>ξ</b> − η∇<i>u</i><sup>2</sup> &nbsp;· Chladni, 1787' }; },
+    turing: function (s) { return {
+      about: 'One substance, and at every pixel five activator–inhibitor pairs of different sizes. The pair that agrees best wins and nudges the pixel up or down, so patterns nest inside patterns.',
+      eq: '<i>a<sub>s</sub></i> = ⟨<i>v</i>⟩<sub><i>r<sub>s</sub></i></sub>, &nbsp;<i>h<sub>s</sub></i> = ⟨<i>v</i>⟩<sub><i>R<sub>s</sub></i></sub>, &nbsp;<i>R<sub>s</sub></i> ≈ ' + num(s.ratio, 1) + '<i>r<sub>s</sub></i><br><i>s</i>* = argmin<sub><i>s</i></sub> |<i>a<sub>s</sub></i> − <i>h<sub>s</sub></i>|<br><i>v</i> ← <i>v</i> + δ<sub><i>s</i>*</sub> sign(<i>a</i><sub><i>s</i>*</sub> − <i>h</i><sub><i>s</i>*</sub>)',
+      credit: 'Multi-scale Turing patterns, Jonathan McCabe, 2010' }; },
+    soup: function () { return {
+      about: 'A primordial soup. Each particle carries its own chaotic chemistry; particles in step attract. Bodies self-assemble, each wrapped in a Markov blanket (the bright ring): the inside only meets the outside through it. Systems like this can be read as minimising free energy.',
+      eq: 'ẋ = σ(<i>y</i> − <i>x</i>), ẏ = <i>x</i>(ρ − <i>z</i>) − <i>y</i>, ż = <i>xy</i> − β<i>z</i> &nbsp;(+ coupling to neighbours)<br><i>F</i> = 𝔼<sub><i>q</i></sub>[ln <i>q</i>(ψ) − ln <i>p</i>(<i>s</i>, ψ)] ≥ −ln <i>p</i>(<i>s</i>)',
+      credit: 'After Karl Friston, “Life as we know it”, 2013' }; },
+    cosmos: function (s) { return {
+      about: 'Matter spread almost evenly, and gravity. Small ripples grow into filaments, walls and voids, and halos where the filaments meet: the cosmic web.',
+      eq: '∇<sup>2</sup>φ = 4π<i>G</i>(ρ − ρ̄)<br><b>ẍ</b> = −∇φ − <i>H</i><b>ẋ</b><br><b>x</b>(0) = <b>q</b> + ∇ψ(<b>q</b>) &nbsp;(Zel’dovich)',
+      credit: 'Particle-mesh gravity, ' + s.count.toLocaleString() + ' particles' }; },
+    liquid: function (s) { return {
+      about: 'Particles carry the water; a grid makes sure it can’t be squeezed. The tank tilts and the water sloshes.',
+      eq: '∂<b>u</b>⁄∂<i>t</i> + (<b>u</b>·∇)<b>u</b> = −∇<i>p</i>⁄ρ + <b>g</b>, &nbsp;∇·<b>u</b> = 0<br><b>u</b><sub><i>p</i></sub> ← α(<b>u</b><sub><i>p</i></sub> + Δ<b>u</b><sub>grid</sub>) + (1 − α)<b>u</b><sub>grid</sub>, &nbsp;α = 0.93',
+      credit: 'FLIP/PIC, Brackbill 1986; Zhu &amp; Bridson 2005' }; },
+    bulb: function (s) { return {
+      about: 'A 3D cousin of the Mandelbrot set, drawn by ray marching: each ray steps forward by a distance that is guaranteed safe until it touches the surface, then marches towards the light for soft shadows.',
+      eq: '<b>z</b> ↦ <b>z</b><sup><i>n</i></sup> + <b>c</b>, &nbsp;(<i>r</i>, θ, φ)<sup><i>n</i></sup> = (<i>r<sup>n</sup></i>, <i>n</i>θ, <i>n</i>φ), &nbsp;<i>n</i> = ' + num(s.power.value, 2) + '<br>DE(<b>c</b>) = ½ <i>r</i> ln <i>r</i> ⁄ <i>r</i>′<br><i>t</i> ← <i>t</i> + DE(<b>o</b> + <i>t</i><b>d</b>)',
+      credit: 'Mandelbulb, White &amp; Nylander, 2009' }; }
+  };
+
+  // ============================================================ Mandelbulb
+  // A 3D fractal, ray-marched: each pixel's ray steps forward by a safe
+  // distance from the distance estimator until it touches the surface; then
+  // a second march towards the light gives soft shadows. Frames are blended
+  // with a sub-pixel jitter, which smooths edges over time.
+  var BULB_FS = frag([
+    'uniform vec3 uEye, uTarget, uLightDir; uniform float uPower, uAspect, uFov; uniform vec2 uJitter;',
+    'float de(vec3 p, out float trap) { vec3 z = p; float dr = 1.0, r = 0.0; trap = 1e9;',
+    '  for (int i = 0; i < 8; i++) { r = length(z); if (r > 2.0) break;',
+    '    float th = acos(clamp(z.z / r, -1.0, 1.0)) * uPower, ph = atan(z.y, z.x) * uPower;',
+    '    dr = pow(r, uPower - 1.0) * uPower * dr + 1.0;',
+    '    z = pow(r, uPower) * vec3(sin(th) * cos(ph), sin(th) * sin(ph), cos(th)) + p; trap = min(trap, dot(z, z)); }',
+    '  return 0.5 * log(r) * r / dr; }',
+    'float de0(vec3 p) { float t; return de(p, t); }',
+    'vec3 normalAt(vec3 p, float e) { vec2 k = vec2(1.0, -1.0);',
+    '  return normalize(k.xyy * de0(p + k.xyy * e) + k.yyx * de0(p + k.yyx * e) + k.yxy * de0(p + k.yxy * e) + k.xxx * de0(p + k.xxx * e)); }',
+    'float softShadow(vec3 ro, vec3 rd) { float res = 1.0, t = 0.01;',
+    '  for (int i = 0; i < 28; i++) { float h = de0(ro + rd * t); res = min(res, 8.0 * h / t); t += clamp(h, 0.006, 0.12); if (res < 0.01 || t > 2.5) break; }',
+    '  return clamp(res, 0.0, 1.0); }',
+    'void main() {',
+    '  vec2 uv = (vUv - 0.5 + uJitter) * vec2(uAspect, 1.0);',
+    '  vec3 f = normalize(uTarget - uEye), r = normalize(cross(f, vec3(0.0, 1.0, 0.0))), u = cross(r, f);',
+    '  vec3 rd = normalize(f + uFov * (uv.x * r + uv.y * u)), ro = uEye;',
+    '  float b = dot(ro, rd), c = dot(ro, ro) - 1.44, disc = b * b - c; vec3 col = vec3(0.0); float glow = 0.0;',
+    '  if (disc > 0.0) {',
+    '    float t = max(0.0, -b - sqrt(disc)), tmax = -b + sqrt(disc), trap = 0.0; bool hit = false; int i;',
+    '    for (i = 0; i < 150; i++) { vec3 p = ro + rd * t; float d = de(p, trap); glow += exp(-d * 30.0) * 0.01;',
+    '      if (d < 0.0005 * t) { hit = true; break; } t += d * 0.9; if (t > tmax) break; }',
+    '    if (hit) { vec3 p = ro + rd * t; vec3 n = normalAt(p, 0.0004 * t); vec3 L = normalize(uLightDir);',
+    '      float diff = max(dot(n, L), 0.0), sh = softShadow(p + n * 0.003, L), ao = 1.0 - float(i) / 150.0;',
+    '      float spec = pow(max(dot(reflect(-L, n), -rd), 0.0), 40.0);',
+    '      vec3 base = pal(0.2 + 0.75 * clamp(sqrt(trap) * 0.75, 0.0, 1.0));',
+    '      col = base * (0.04 + 1.2 * diff * sh) * ao * ao + pal(0.98) * spec * sh * 0.7 + base * 0.15 * max(n.y, 0.0) * ao; } }',
+    '  col += pal(0.6) * glow * 0.3;',
+    '  fragColor = vec4(col, 1.0); }'
+  ].join('\n'), true);
+  var Bulb = extend(function Bulb(r, w, h) {
+    Scene.call(this, r, w, h);
+    this.power = new Drift(r, 5.5, 9.5, [18, 40]);
+    this.camR = new Drift(r, 2.5, 3.1, [20, 40]);
+    this.camH = new Drift(r, -0.8, 1.0, [20, 40]);
+    this.camSpeed = r.sign() * r.uniform(0.05, 0.09);
+    this.frame = 0;
+    this.duration = [50, 85];
+  }, 'Mandelbulb', 0.9, 'bulb');
+  Bulb.prototype.step = function (dt) { this.dt = dt; this.power.update(dt); this.camR.update(dt); this.camH.update(dt); };
+  Bulb.prototype.draw = function () {
+    var a = this.t * this.camSpeed, R = this.camR.value, k = this.frame++ % 4;
+    var jit = [[0.125, 0.375], [-0.375, 0.125], [0.375, -0.125], [-0.125, -0.375]][k];
+    this.out.bind();
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);   // blend over the last frames
+    gl.blendColor(0, 0, 0, this.frame < 3 ? 1 : 0.4);
+    program('bulb', BULB_FS).use({
+      uEye: [R * Math.cos(a), this.camH.value, R * Math.sin(a)], uTarget: [0, 0, 0], uLightDir: [Math.cos(a + 1.2), 0.9, Math.sin(a + 1.2)],
+      uPower: this.power.value, uAspect: this.aspect, uFov: 0.85, uJitter: [jit[0] / this.h, jit[1] / this.h], uPal: this.pal
+    });
+    fullscreen();
+    gl.disable(gl.BLEND);
+  };
+
   // ---------------------------------------------------------------- engine
   var DISSOLVE_FS = frag([
     'uniform sampler2D uA, uB; uniform float uP, uSeed, uAspect;',
@@ -1460,12 +2250,23 @@
   ].join('\n'));
   var FINAL_FS = frag([
     'uniform sampler2D uSrc; uniform float uZoom, uExposure, uStrength, uDark, uTime; uniform vec2 uShift; uniform vec3 uPaper;',
+    'uniform float uGrade, uBloom, uSharpen; uniform vec2 uSrcTexel;',
     'vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }',
     'void main() {',
     '  vec2 uv = vec2((vUv.x - 0.5) / uZoom + 0.5, vUv.y / uZoom) + uShift;',
     '  vec3 col = safe(texture(uSrc, uv).rgb) * uExposure;',
+    // the richer wallpaper look: unsharp mask for detail, then a soft bloom from the mip chain
+    '  if (uGrade > 0.5) {',
+    '    vec3 nb = safe(textureLod(uSrc, uv + vec2(uSrcTexel.x, 0.0), 0.0).rgb + textureLod(uSrc, uv - vec2(uSrcTexel.x, 0.0), 0.0).rgb',
+    '      + textureLod(uSrc, uv + vec2(0.0, uSrcTexel.y), 0.0).rgb + textureLod(uSrc, uv - vec2(0.0, uSrcTexel.y), 0.0).rgb) * 0.25 * uExposure;',
+    '    col = max(col + (col - nb) * uSharpen, 0.0);',
+    '    vec3 bloom = safe(textureLod(uSrc, uv, 2.0).rgb) * 0.4 + safe(textureLod(uSrc, uv, 4.0).rgb) * 0.35 + safe(textureLod(uSrc, uv, 6.0).rgb) * 0.25;',
+    '    col += bloom * uExposure * uBloom; }',
     '  vec2 v = vUv - 0.5; col *= 1.0 - dot(v, v) * 0.55;',
     '  vec3 g = pow(aces(col), vec3(1.0 / 2.2));',
+    // more colour, more contrast and a true black, so scenes don't look washed out
+    '  if (uGrade > 0.5) { float l = dot(g, vec3(0.2126, 0.7152, 0.0722)); g = clamp(mix(vec3(l), g, 1.18), 0.0, 1.0);',
+    '    g = mix(g, g * g * (3.0 - 2.0 * g), 0.28); g = max(g - 0.008, 0.0) / 0.992; }',
     // dark theme: the glow lights up the paper (screen blend)
     '  vec3 dark = 1.0 - (1.0 - uPaper) * (1.0 - g * uStrength);',
     // light theme: the same shapes as soft tints on the paper
@@ -1477,13 +2278,33 @@
     '  fragColor = vec4(o + n / 255.0, 1.0); }'
   ].join('\n'));
 
+  // FXAA (Timothy Lottes), run on the finished frame for wallpaper hosts
+  var FXAA_FS = frag([
+    'uniform sampler2D uSrc; uniform vec2 uTexel;',
+    'float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }',
+    'void main() {',
+    '  vec3 nw = texture(uSrc, vUv + vec2(-1.0, -1.0) * uTexel).rgb, ne = texture(uSrc, vUv + vec2(1.0, -1.0) * uTexel).rgb;',
+    '  vec3 sw = texture(uSrc, vUv + vec2(-1.0, 1.0) * uTexel).rgb, se = texture(uSrc, vUv + vec2(1.0, 1.0) * uTexel).rgb;',
+    '  vec3 m = texture(uSrc, vUv).rgb;',
+    '  float lNW = lum(nw), lNE = lum(ne), lSW = lum(sw), lSE = lum(se), lM = lum(m);',
+    '  float lo = min(lM, min(min(lNW, lNE), min(lSW, lSE))), hi = max(lM, max(max(lNW, lNE), max(lSW, lSE)));',
+    '  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));',
+    '  float reduce = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0);',
+    '  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), -8.0, 8.0) * uTexel;',
+    '  vec3 a = 0.5 * (texture(uSrc, vUv + dir * (1.0 / 3.0 - 0.5)).rgb + texture(uSrc, vUv + dir * (2.0 / 3.0 - 0.5)).rgb);',
+    '  vec3 b = a * 0.5 + 0.25 * (texture(uSrc, vUv - dir * 0.5).rgb + texture(uSrc, vUv + dir * 0.5).rgb);',
+    '  float lb = lum(b); fragColor = vec4((lb < lo || lb > hi) ? a : b, 1.0); }'
+  ].join('\n'));
+
   var TRANSITION = 7;
-  // data-scenes="all" on the canvas adds the five newer scenes (Silk, Chaos,
-  // Galaxy, Ink, Particle Life) to the rotation; the default stays the
-  // original five, which suit a page background.
+  // data-scenes="all" on the canvas adds the newer scenes (Silk, Chaos,
+  // Galaxy, Ink, Particle Life, Cymatics, Turing, Free Energy, Cosmos,
+  // Liquid) to the rotation; the default stays the original five, which
+  // suit a page background.
   var ALL_SCENES = canvas.getAttribute('data-scenes') === 'all';
   // ?aether=physarum shows only that scene (handy for screenshots); the keys
-  // are nebula, julia, reaction, physarum, attractor, silk, chaos, galaxy, ink, life
+  // are nebula, julia, reaction, physarum, attractor, silk, chaos, galaxy, ink,
+  // life, cymatics, turing, soup, cosmos, liquid
   var FORCED = (/[?&]aether=([a-z]+)/i.exec(location.search) || [])[1];
   FORCED = FORCED ? FORCED.toLowerCase() : null;
 
@@ -1493,11 +2314,12 @@
     this.r = rng((Math.random() * 4294967296) >>> 0);
     this.scenes = [Nebula, Julia];
     if (FLOAT_RT) this.scenes.push(Reaction, Physarum, Attractor);
-    var extra = FLOAT_RT ? [Silk, Chaos, Galaxy, Ink, Life] : [];
+    var extra = FLOAT_RT ? [Silk, Chaos, Galaxy, Ink, Life, Cymatics, Turing, Soup, Cosmos, Liquid] : [];
+    if (RAY) extra.push(Bulb);   // ray marching only where the GPU has room for it
     if (ALL_SCENES) this.scenes = this.scenes.concat(extra);
-    this.known = this.scenes.concat(ALL_SCENES ? [] : extra);
+    this.known = this.scenes.concat(ALL_SCENES ? [] : extra).concat(RAY ? [] : [Bulb]);
     this.history = [];
-    this.comp = new Target(w, h, F16);
+    this.comp = null;
     this.cur = null; this.nxt = null; this.trans = 0; this.time = 0;
   }
   Engine.prototype.pickClass = function (first) {
@@ -1510,13 +2332,23 @@
     for (var i = 0; i < opts.length; i++) { x -= opts[i].weight; if (x <= 0) return opts[i]; }
     return opts[opts.length - 1];
   };
-  Engine.prototype.newScene = function () {
-    var C = this.pickClass(!this.history.length);
-    var s = new C(rng(this.r.bits()), this.w, this.h);
+  Engine.prototype.newScene = function (C) {
+    C = C || this.pickClass(!this.history.length);
+    var sz = this.opts.sizeFor ? this.opts.sizeFor(C) : [this.w, this.h];
+    var s = new C(rng(this.r.bits()), sz[0], sz[1]);
     s.lifetime = this.r.uniform(s.duration[0], s.duration[1]);
     this.history.push(C.sceneName);
+    if (this.opts.onScene) this.opts.onScene(s, 'start');
     return s;
   };
+  // move on now, dissolving into a fresh scene (a struggling scene hands over early)
+  Engine.prototype.skip = function () {
+    if (this.nxt || !this.cur || this.opts.still) return false;
+    this.nxt = this.newScene(FORCED ? this.cur.constructor : null);
+    this.trans = 0;
+    return true;
+  };
+  Engine.prototype.showing = function () { return this.nxt || this.cur; };
   Engine.prototype.frame = function (dt) {
     this.time += dt;
     if (!this.cur) this.cur = this.newScene();
@@ -1528,9 +2360,15 @@
     var src = this.cur.render();
     if (this.nxt) {
       var b = this.nxt.render();
+      // scenes can differ in resolution; compose at the larger of the two
+      var cw = Math.max(this.cur.w, this.nxt.w), ch = Math.max(this.cur.h, this.nxt.h);
+      if (!this.comp || this.comp.w !== cw || this.comp.h !== ch) {
+        if (this.comp) this.comp.release();
+        this.comp = new Target(cw, ch, F16);
+      }
       this.comp.bind();
       program('dissolve', DISSOLVE_FS).use({
-        uA: tex(0, src), uB: tex(1, b), uP: smooth(this.trans), uSeed: (this.history.length * 13.7) % 100, uAspect: this.w / this.h
+        uA: tex(0, src), uB: tex(1, b), uP: smooth(this.trans), uSeed: (this.history.length * 13.7) % 100, uAspect: cw / ch
       });
       fullscreen();
       src = this.comp;
@@ -1540,19 +2378,41 @@
   };
   Engine.prototype.present = function (view) {
     if (!this.src) return;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.height);
     gl.bindVertexArray(vao);
+    var src = this.src, W = canvas.width, H = canvas.height;
+    if (view.grade) {   // a mip chain of the frame, for bloom (and clean downsampling when supersampled)
+      gl.bindTexture(gl.TEXTURE_2D, src.tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D);
+    }
+    if (view.aa) {
+      if (!this.ldr || this.ldr.w !== W || this.ldr.h !== H) {
+        if (this.ldr) this.ldr.release();
+        this.ldr = new Target(W, H, { i: gl.RGBA8, f: gl.RGBA, t: gl.UNSIGNED_BYTE }, gl.LINEAR);
+      }
+      this.ldr.bind();
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, W, H);
+    }
     program('final', FINAL_FS).use({
-      uSrc: tex(0, this.src), uZoom: view.zoom, uShift: view.shift, uExposure: view.exposure * view.fade,
-      uStrength: view.strength, uDark: view.dark, uPaper: view.paper, uTime: this.time
+      uSrc: tex(0, src), uZoom: view.zoom, uShift: view.shift, uExposure: view.exposure * view.fade,
+      uStrength: view.strength, uDark: view.dark, uPaper: view.paper, uTime: this.time,
+      uGrade: view.grade ? 1 : 0, uBloom: 0.16, uSharpen: src.w < W ? 0.45 : 0.25, uSrcTexel: [1 / src.w, 1 / src.h]
     });
     fullscreen();
+    if (view.aa) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, W, H);
+      program('fxaa', FXAA_FS).use({ uSrc: tex(0, this.ldr), uTexel: [1 / W, 1 / H] });
+      fullscreen();
+    }
   };
   Engine.prototype.release = function () {
     if (this.cur) this.cur.release();
     if (this.nxt) this.nxt.release();
-    this.comp.release();
+    if (this.comp) this.comp.release();
+    if (this.ldr) this.ldr.release();
   };
 
   // ------------------------------------------------------------------ page
@@ -1560,7 +2420,7 @@
   // the scroll and mouse parallax off and shows the whole field, centred
   var PARALLAX = canvas.getAttribute('data-parallax') !== '0';
   var ZOOM = PARALLAX ? 1.2 : 1;
-  var view = { zoom: ZOOM, shift: [0, 0], exposure: 1.25, fade: 0, strength: 0, dark: 1, paper: [0, 0, 0] };
+  var view = { zoom: ZOOM, shift: [0, 0], exposure: 1.25, fade: 0, strength: 0, dark: 1, paper: [0, 0, 0], grade: false, aa: false };
   var target = { dark: 1, paper: [0, 0, 0] };
   var scroll = 0, pointerX = 0, pointerS = 0;
   var quality = 1, slowFor = 0, ema = 1 / 30, last = 0, still = false, size = [0, 0], gaveUp = false;
@@ -1602,12 +2462,102 @@
     return [Math.max(160, Math.round(css[0] * k)), Math.max(120, Math.round(css[1] * k))];
   }
 
+  // ?quality=saver|balanced|high|max (or data-quality on the canvas) is for
+  // desktop wallpaper hosts: each scene gets its own resolution, which rises
+  // while the frame rate holds and drops as soon as frames are missed, and
+  // the high presets draw at 60 fps. The budgets are remembered per scene.
+  // Without it the page keeps its fixed budget and only steps down.
+  var QUALITY = ((/[?&]quality=([a-z]+)/i.exec(location.search) || [])[1] || canvas.getAttribute('data-quality') || '').toLowerCase();
+  var PRESET = {
+    saver:    { start: 0.35e6, max: 0.6e6, fps: 30 },
+    balanced: { start: 0.9e6,  max: 1.4e6, fps: 30 },
+    high:     { start: 1.6e6,  max: 4.2e6, fps: 60 },
+    max:      { start: 2.2e6,  max: 1e9,   fps: 60 }
+  }[QUALITY] || null;
+  var FPS = PRESET ? PRESET.fps : 30, MIN_PX = 0.2e6;
+  // wallpaper hosts get the richer grade (bloom, sharpening, contrast) and FXAA;
+  // the 60 fps presets also get ray marching (shadows, the Mandelbulb, more samples)
+  var GRADE = !!PRESET || canvas.getAttribute('data-grade') === 'rich';
+  var RAY = !!PRESET && PRESET.fps >= 60;
+  function deviceArea() { var c = cssSize(), d = Math.min(2, window.devicePixelRatio || 1); return c[0] * c[1] * d * d; }
+  function sizeAt(px) {
+    var c = cssSize(), k = Math.sqrt(px / (c[0] * c[1]));
+    return [Math.max(160, Math.round(c[0] * k)), Math.max(120, Math.round(c[1] * k))];
+  }
+  var adapt = {
+    store: 'aether-budget-' + QUALITY, budgets: {}, frames: 0, misses: 0, time: 0, key: null, grew: false, clean: true,
+    load: function () { try { this.budgets = JSON.parse(localStorage.getItem(this.store) || '{}') || {}; } catch (e) { this.budgets = {}; } },
+    save: function () { try { localStorage.setItem(this.store, JSON.stringify(this.budgets)); } catch (e) {} },
+    maxPx: function () { return Math.min(PRESET.max, deviceArea()); },
+    budget: function (key) {
+      var b = this.budgets[key];
+      return Math.max(MIN_PX, Math.min(this.maxPx(), isFinite(b) && b > 0 ? b : PRESET.start));
+    },
+    set: function (key, px, why) {
+      px = Math.max(MIN_PX, Math.min(this.maxPx(), px));
+      if (Math.abs(px - this.budget(key)) < 1e4) return;
+      this.budgets[key] = Math.round(px);
+      this.save();
+      emit('aether-quality', { scene: key, pixels: Math.round(px), why: why });
+    },
+    reset: function () { this.frames = 0; this.misses = 0; this.time = 0; },
+    // called once per drawn frame with the real time since the last one
+    track: function (dt) {
+      if (!engine || !engine.cur) return;
+      if (dt > 0.5 || engine.nxt) { this.reset(); return; }   // a pause, or a dissolve drawing two scenes
+      var s = engine.cur, key = s.constructor.key;
+      if (key !== this.key) { this.key = key; this.grew = false; this.clean = true; this.reset(); }
+      this.frames++; this.time += dt;
+      if (dt > 1.6 / FPS) this.misses++;
+      if (this.time < 3) return;
+      var rate = this.misses / this.frames, b = this.budget(key);
+      if (rate > 0.25) {             // badly behind: smaller next time, and hand over now
+        this.set(key, b * 0.6, 'stutter');
+        this.clean = false;
+        engine.skip();
+      } else if (rate > 0.05) {      // a few dropped frames: smaller next time
+        this.set(key, b * 0.8, 'dropped frames');
+        this.clean = false;
+      } else if (rate < 0.01 && this.clean && !this.grew && s.t > 12) {
+        this.set(key, b * 1.4, 'smooth');   // steady for a while: try sharper next time
+        this.grew = true;
+      }
+      this.reset();
+    }
+  };
+  if (PRESET) adapt.load();
+  view.grade = GRADE; view.aa = !!PRESET;
+
+  function emit(name, detail) {
+    try { window.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {}
+    // native hosts: WKWebView (macOS) and WebView2 (Windows)
+    try { window.webkit.messageHandlers.aether.postMessage({ event: name, detail: detail }); } catch (e) {}
+    try { window.chrome.webview.postMessage({ event: name, detail: detail }); } catch (e) {}
+  }
+  // a scene began, or someone asked what is showing: name, key and its math
+  function announce(s, why) {
+    if (!s) return;
+    var C = s.constructor, m = MATH[C.key];
+    var info = { key: C.key, name: C.sceneName, why: why, width: s.w, height: s.h };
+    if (m) { try { var d = m(s); info.math = d.eq; info.about = d.about; info.credit = d.credit; } catch (e) {} }
+    emit('aether-scene', info);
+  }
+  window.addEventListener('aether-show-math', function () { if (engine) announce(engine.showing(), 'ask'); });
+
   function build() {
     if (engine) engine.release();
     size = cssSize();
-    var s = simSize(size);
-    canvas.width = s[0]; canvas.height = s[1];
-    engine = new Engine(s[0], s[1], { still: still });
+    var opts = { still: still, onScene: announce };
+    if (PRESET) {
+      var c = sizeAt(Math.min(adapt.maxPx(), 8.3e6));
+      canvas.width = c[0]; canvas.height = c[1];
+      opts.sizeFor = function (C) { return sizeAt(adapt.budget(C.key)); };
+      engine = new Engine(c[0], c[1], opts);
+    } else {
+      var s = simSize(size);
+      canvas.width = s[0]; canvas.height = s[1];
+      engine = new Engine(s[0], s[1], opts);
+    }
     view.fade = 0;
   }
 
@@ -1628,8 +2578,9 @@
   function frame(now) {
     raf = requestAnimationFrame(frame);
     var dt = (now - last) / 1000;
-    if (dt < 1 / 30 - 0.004) return;      // 30 fps is plenty for slow drift
+    if (dt < 1 / FPS - 0.004) return;     // 30 fps is plenty for slow drift; the high presets run at 60
     last = now;
+    if (PRESET) adapt.track(dt);
     dt = Math.min(dt, 0.1);
     ema += (dt - ema) * 0.05;
     engine.frame(dt);
@@ -1644,6 +2595,7 @@
       return;
     }
     // too slow? drop the resolution a notch (and give up animating at the bottom)
+    if (PRESET) return;   // the adaptive presets handle this per scene
     slowFor = ema > 0.05 ? slowFor + dt : 0;
     if (slowFor > 4) {
       slowFor = 0; ema = 1 / 30;

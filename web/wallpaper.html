@@ -6,11 +6,18 @@
 
   Query options:
     ?aether=physarum   stay on one scene (nebula, julia, reaction, physarum, attractor,
-                       silk, chaos, galaxy, ink, life)
+                       silk, chaos, galaxy, ink, life, cymatics, turing, soup,
+                       cosmos, liquid, bulb)
     ?level=0.8         brightness, 0-1.5 (default 1)
+    ?quality=high      saver, balanced (default), high or max: resolution and frame
+                       rate adapt per scene; high and max run at 60 fps and add ray marching
+    ?math=0            don't show a scene's math when it starts (? still shows it)
 
   Hosts can pause it by sending level 0 and resume with any other level:
     window.dispatchEvent(new CustomEvent('aether-level', { detail: 0 }))
+  and show the current scene's math with:
+    window.dispatchEvent(new CustomEvent('aether-show-math'))
+  'aether-math-auto' with detail true/false turns the math-on-start card on or off.
 -->
 <html lang="en">
 <head>
@@ -19,18 +26,99 @@
 <title>Aether</title>
 <style>
   :root{ --paper:#000000; color-scheme:dark; }
-  html, body{ margin:0; height:100%; background:#000; overflow:hidden; cursor:none; }
-  #aether-bg{ position:fixed; inset:0; width:100vw; height:100vh; display:block; opacity:0; transition:opacity 2s ease; }
+  html, body{ margin:0; height:100%; background:#000; overflow:hidden; }
+  #aether-bg{ position:fixed; inset:0; width:100vw; height:100vh; display:block; opacity:0; transition:opacity 2s ease; cursor:none; }
   #aether-bg.on{ opacity:1; }
+
+  /* the math card: shown when a scene starts, and on request */
+  .math{
+    position:fixed; left:clamp(16px, 3vw, 56px); bottom:clamp(96px, 13vh, 160px);
+    max-width:min(540px, calc(100vw - 32px)); box-sizing:border-box; padding:16px 20px 14px;
+    border-radius:14px; background:rgba(6, 8, 14, 0.58);
+    -webkit-backdrop-filter:blur(16px) saturate(1.2); backdrop-filter:blur(16px) saturate(1.2);
+    border:1px solid rgba(255, 255, 255, 0.09); box-shadow:0 10px 40px rgba(0, 0, 0, 0.35);
+    color:#e9edf5; opacity:0; transform:translateY(10px); pointer-events:none;
+    transition:opacity 1.4s ease, transform 1.4s ease;
+  }
+  .math.on{ opacity:1; transform:none; }
+  .math h2{ margin:0 0 4px; font:600 15px/1.25 -apple-system, "Segoe UI", system-ui, sans-serif; letter-spacing:0.02em; }
+  .math .about{ margin:0 0 12px; font:13px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; color:rgba(233, 237, 245, 0.74); }
+  .math .eq{ font:19px/1.6 "STIX Two Math", "STIX Two Text", "Cambria Math", "Latin Modern Math", "Times New Roman", serif; }
+  .math .eq i{ font-style:italic; }
+  .math .eq sup, .math .eq sub{ font-size:0.7em; line-height:0; }
+  .math .credit{ margin-top:10px; font:12px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; color:rgba(233, 237, 245, 0.52); }
+  .math .credit i{ font-family:"STIX Two Text", "Cambria Math", "Times New Roman", serif; }
+
+  /* a ? button for browsers (desktop wallpaper hosts don't pass the mouse through) */
+  .ask{
+    position:fixed; left:clamp(16px, 3vw, 56px); bottom:clamp(44px, 6vh, 90px);
+    width:28px; height:28px; border-radius:50%; border:1px solid rgba(255, 255, 255, 0.18);
+    background:rgba(6, 8, 14, 0.45); color:rgba(233, 237, 245, 0.8); cursor:pointer;
+    font:600 15px/1 -apple-system, "Segoe UI", system-ui, sans-serif; opacity:0; transition:opacity 0.4s ease;
+  }
+  body:hover .ask, .ask:focus-visible{ opacity:1; }
+  @media (prefers-reduced-motion: reduce){ .math{ transition:opacity 0.3s ease; transform:none; } }
 </style>
 </head>
 <body>
-<canvas id="aether-bg" aria-hidden="true" data-strength="1" data-pixels="1200000" data-parallax="0" data-level-key="aether-wallpaper-level" data-scenes="all"></canvas>
+<canvas id="aether-bg" aria-hidden="true" data-strength="1" data-pixels="1200000" data-parallax="0" data-level-key="aether-wallpaper-level" data-scenes="all" data-quality="balanced"></canvas>
+<div class="math" id="math" role="status" aria-live="polite">
+  <h2></h2>
+  <p class="about"></p>
+  <div class="eq"></div>
+  <div class="credit"></div>
+</div>
+<button class="ask" id="ask" type="button" aria-label="Show the math for this scene" title="Show the math (?)">?</button>
 <script>
   // ?level= wins over a saved level so hosts can set it from the URL
   (function () {
     var m = /[?&]level=([0-9.]+)/.exec(location.search);
     if (m) try { localStorage.setItem('aether-wallpaper-level', m[1]); } catch (e) {}
+  })();
+
+  // the math card
+  (function () {
+    var card = document.getElementById('math');
+    var auto = !/[?&]math=0\b/.test(location.search), level = 1, hideTimer = 0, showTimer = 0, current = null;
+    function fill(info) {
+      card.querySelector('h2').textContent = info.name;
+      card.querySelector('.about').textContent = info.about || '';
+      // the equations come from aether-bg.js itself (a fixed table, no outside input)
+      card.querySelector('.eq').innerHTML = info.math || '';
+      card.querySelector('.credit').innerHTML = info.credit || '';
+    }
+    function hide() { clearTimeout(hideTimer); clearTimeout(showTimer); card.classList.remove('on'); }
+    var pending = null;
+    function show(info, delay, hold) {
+      clearTimeout(hideTimer); clearTimeout(showTimer);
+      if (!info.math) return;
+      if (level === 0) { pending = info; return; }   // paused (or covered): show it when it comes back
+      pending = null;
+      showTimer = setTimeout(function () {
+        fill(info);
+        card.classList.add('on');
+        hideTimer = setTimeout(hide, hold * 1000);
+      }, delay * 1000);
+    }
+    window.addEventListener('aether-scene', function (e) {
+      var info = e.detail || {};
+      if (info.why === 'ask') {
+        if (card.classList.contains('on') && current && current.key === info.key) { hide(); return; }
+        current = info; show(info, 0, 22);
+      } else {
+        current = info;
+        if (auto) show(info, 2.5, 14); else hide();
+      }
+    });
+    window.addEventListener('aether-math-auto', function (e) { auto = !!e.detail; if (!auto) hide(); });
+    window.addEventListener('aether-level', function (e) {
+      level = +e.detail || 0;
+      if (level === 0) { if (card.classList.contains('on') && current) pending = current; hide(); }
+      else if (pending && auto) show(pending, 1.5, 14);
+    });
+    function ask() { window.dispatchEvent(new CustomEvent('aether-show-math')); }
+    document.getElementById('ask').addEventListener('click', ask);
+    window.addEventListener('keydown', function (e) { if (e.key === '?' || e.key === 'm') ask(); if (e.key === 'Escape') hide(); });
   })();
 </script>
 <script src="aether-bg.js"></script>

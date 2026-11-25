@@ -76,12 +76,23 @@ Aether lives in the menu bar (a small circle). Click it for:
 
 - **Brightness** slider (5–150%), saved
 - **Pause / Resume**, saved
-- **Scene**: all ten in turn, or stay on one
+- **Scene**: all of them in turn, or stay on one
+- **Quality**: Battery Saver, Balanced (default), High or Maximum. Each scene's
+  resolution adapts to keep motion smooth: it rises while frames arrive on
+  time and drops as soon as they don't (the learned sizes are remembered per
+  scene). High and Maximum run at 60 fps and add ray marching: soft shadows
+  over Reaction and Turing, the Mandelbulb scene, four samples per pixel on
+  Julia. Every setting gets FXAA anti-aliasing, bloom and the richer grade.
+- **Show the Math (?)** (⇧⌘/ while the menu is open): the current scene's
+  equations, on a card in the lower left of each screen
+- **Show the Math When a Scene Starts**: the card fades in for a few seconds
+  whenever a new scene begins (on by default)
 - **Open at Login**: registers the app with `SMAppService.mainApp`; it also
   appears in System Settings › General › Login Items
 - **Reload**, **Show Log**, **Quit Aether**
 
-The icon dims while the wallpaper is paused. There's no Dock icon.
+The menu's first line shows what's playing on each screen. The icon dims
+while the wallpaper is paused. There's no Dock icon.
 
 It pauses on its own (sending the page level 0, which fades it out and stops
 drawing, so a paused wallpaper costs nothing) and resumes afterwards:
@@ -135,7 +146,7 @@ Command-line options for the binary (`~/Applications/Aether.app/Contents/MacOS/A
   `NSWorkspace`'s sleep, wake and session notifications, and
   `ProcessInfo.isLowPowerModeEnabled`.
 - **WebGL.** WKWebView gives the page WebGL 2 with `EXT_color_buffer_float`,
-  so all ten scenes run. The log names the renderer the first time the page
+  so every scene runs. The log names the renderer the first time the page
   loads.
 
 ## Troubleshooting
