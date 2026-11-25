@@ -1,11 +1,12 @@
-// Mirage Live Wallpaper — GNOME Shell extension.
+// Aether Live Wallpaper — GNOME Shell extension.
 //
-// Launches `python3 -m mirage --wallpaper` as a Wayland client the shell owns,
-// then turns its window into a desktop-layer window: stacked below everything
+// Launches `python3 -m aether --wallpaper` (or the older `mirage` CPU renderer)
+// as a Wayland client the shell owns, then turns its window into a
+// desktop-layer window: stacked below everything
 // (including the Desktop Icons window), on every workspace, hidden from the
 // dock / Alt-Tab / Overview, and sized to the primary monitor.
 //
-// It also pauses Mirage (SIGUSR1) while a maximized or fullscreen window
+// It also pauses the renderer (SIGUSR1) while a maximized or fullscreen window
 // covers the primary monitor or the screen is locked, resumes it (SIGUSR2)
 // afterwards, and restarts it if it crashes.
 //
@@ -27,7 +28,7 @@ const RESTART_DELAYS_S = [2, 5, 15, 60];
 const MAX_CRASHES = 6;             // within CRASH_WINDOW_S -> give up
 const CRASH_WINDOW_S = 300;
 
-export default class MirageWallpaperExtension extends Extension {
+export default class AetherWallpaperExtension extends Extension {
     enable() {
         this._client = null;
         this._proc = null;
@@ -40,10 +41,10 @@ export default class MirageWallpaperExtension extends Extension {
         this._relaunchId = 0;
         this._checkId = 0;
 
-        this._mirageDir = this._readMirageDir();
+        this._repoDir = this._readRepoDir();
         this._engine = this._readEngine();
-        if (!this._mirageDir) {
-            console.error(`${this.uuid}: no Mirage directory configured; run install.sh from the Mirage repository.`);
+        if (!this._repoDir) {
+            console.error(`${this.uuid}: no repository directory configured; run install-wallpaper.sh from the wallpaper repository.`);
             return;
         }
 
@@ -64,7 +65,7 @@ export default class MirageWallpaperExtension extends Extension {
 
     disable() {
         // Runs on logout and when the extension is turned off. (The extension
-        // stays enabled on the lock screen via "unlock-dialog" so Mirage is
+        // stays enabled on the lock screen via "unlock-dialog" so the renderer is
         // paused there instead of killed and relaunched.)
         for (const [obj, id] of this._signals)
             obj.disconnect(id);
@@ -92,7 +93,7 @@ export default class MirageWallpaperExtension extends Extension {
     }
 
     // ---- configuration --------------------------------------------------
-    _readMirageDir() {
+    _readRepoDir() {
         try {
             const file = Gio.File.new_for_path(GLib.build_filenamev([this.path, 'mirage-dir']));
             const [, bytes] = file.load_contents(null);
@@ -132,7 +133,7 @@ export default class MirageWallpaperExtension extends Extension {
         const launcher = new Gio.SubprocessLauncher({
             flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
         });
-        launcher.set_cwd(this._mirageDir);
+        launcher.set_cwd(this._repoDir);
         const argv = ['python3', '-m', this._engine, '--wallpaper'];
         launcher.setenv('GDK_BACKEND', 'wayland', true);
 
@@ -140,7 +141,7 @@ export default class MirageWallpaperExtension extends Extension {
             this._client = Meta.WaylandClient.new_subprocess(global.context, launcher, argv);
             this._proc = this._client.get_subprocess();
         } catch (e) {
-            console.error(`${this.uuid}: failed to start Mirage: ${e.message}`);
+            console.error(`${this.uuid}: failed to start ${this._engine}: ${e.message}`);
             this._client = null;
             this._proc = null;
             this._scheduleRelaunch();
@@ -171,7 +172,7 @@ export default class MirageWallpaperExtension extends Extension {
                 const [line] = s.read_line_finish_utf8(res);
                 if (line === null)
                     return;
-                console.log(`mirage: ${line}`);
+                console.log(`wallpaper (${this._engine}): ${line}`);
             } catch (e) {
                 if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
                     console.warn(`${this.uuid}: ${e.message}`);
@@ -271,7 +272,7 @@ export default class MirageWallpaperExtension extends Extension {
         if (!window)
             return;
         // DING lowers its own desktop window after other windows map; make
-        // sure Mirage ends up underneath it. lower() does not emit "raised",
+        // sure the wallpaper ends up underneath it. lower() does not emit "raised",
         // so this settles after one extra restack.
         const stack = global.display.sort_windows_by_stacking(global.display.list_all_windows());
         if (stack.length && stack[0] !== window)

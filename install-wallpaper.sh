@@ -1,5 +1,6 @@
 #!/bin/sh
-# Install (or update) the Mirage Live Wallpaper GNOME Shell extension.
+# Install (or update) the Aether Live Wallpaper GNOME Shell extension.
+# (The extension ID still says "mirage" so existing installs keep working.)
 #
 #   ./install-wallpaper.sh                   install + enable (GPU renderer, Aether)
 #   ./install-wallpaper.sh --engine mirage   use the older CPU renderer instead
@@ -46,5 +47,5 @@ else
         "@as []"|"[]") gsettings set org.gnome.shell enabled-extensions "['$UUID']" ;;
         *) gsettings set org.gnome.shell enabled-extensions "${current%]}, '$UUID']" ;;
     esac
-    echo "Log out and back in; Mirage will start as your wallpaper automatically."
+    echo "Log out and back in; the wallpaper will start automatically."
 fi

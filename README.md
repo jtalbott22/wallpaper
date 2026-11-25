@@ -1,224 +1,379 @@
+<div align="center">
+
 # Aether
 
-*A GPU live wallpaper of particles, fluids and fractals that never repeats.*
+**A GPU live wallpaper of particles, fluids and fractals that never repeats.**
 
-Aether runs ten simulations on the graphics chip and drifts between them
-with slow, organic dissolves:
+<img src="docs/screenshots/hero.webp" alt="Aether drifting from Particle Life into Silk, Reaction and Galaxy" width="720">
 
-| Scene | What you see |
-|---|---|
-| **Silk** | 262k particles riding 3D curl noise, leaving luminous threads that keep re-braiding |
-| **Physarum** | half a million slime-mold agents growing living transport networks; up to three rival species |
-| **Attractor** | Clifford / de Jong maps piled into glowing density fields that fold and re-bloom (sometimes kaleidoscopic) |
-| **Reaction** | Gray-Scott reaction-diffusion as lit enamel: coral, mitosis, mazes and spirals invading each other |
-| **Ink** | a stable-fluids simulation stirred by unseen brushes that bleed coloured ink |
-| **Julia** | Julia sets of z²+c as c glides along the edge of the Mandelbrot set |
-| **Particle Life** | species with asymmetric attractions forming cells, worms and chasers; heat waves melt crystal into gas |
-| **Galaxy** | spiral galaxies on a close encounter, throwing out tidal tails and bridges |
-| **Chaos** | 3D strange attractors (Lorenz, Aizawa, Thomas, Halvorsen, Dadras, Rössler) pouring from one shape into the next |
-| **Nebula** | a calm interlude of domain-warped gas and twinkling stars |
+Ten real-time simulations on your graphics chip, dissolving slowly from one
+into the next, behind your windows on Ubuntu / GNOME.
 
-**Why it doesn't feel like it's on repeat:** every appearance of a scene
-gets a fresh random seed, shape, palette and duration, and while it's on
-screen its parameters glide between random waypoints (feed/kill rates,
-sensor angles, attraction matrices, attractor coefficients, camera paths,
-palettes). Some scenes also have events: new seeds in Reaction, heat waves in
-Particle Life, morphs between systems in Chaos, the collision in Galaxy. The
-scheduler avoids the last four scenes.
+[Scenes](#the-scenes) ·
+[Quick start](#quick-start) ·
+[Make it your wallpaper](#make-it-your-wallpaper) ·
+[How-tos](#how-tos) ·
+[How it was made](#how-it-was-made)
 
-**Calm by design:** slow cameras and parameter drift, no hard cuts,
-bloom and filmic tone-mapping with soft highlights, dithering against
-banding, and a gentle auto-exposure so scenes sit at similar brightness.
-
-## Requirements
-
-- OpenGL 4.3 (any Intel HD 5xx / UHD 6xx or newer with Mesa; most GPUs from
-  the last decade)
-- `python3` with PyGObject and GTK 4 (`gir1.2-gtk-4.0`). No pip installs:
-  OpenGL is called through a small ctypes layer (`aether/gl.py`)
-- Pillow (optional, only for `--preview` / `--sheet`)
-
-## Performance (i7-8550U, Intel UHD 620, 1920x1080)
-
-GPU time per frame with the default quality (simulations at 75% of screen
-resolution) ranges from about 5 ms (Chaos, Galaxy) to about 12–14 ms
-(Reaction, Julia, Attractor, Particle Life), against a 33 ms budget at
-30 fps. CPU use is about 5% of one core. On battery it drops to 20 fps, and
-the extension pauses it entirely when a maximized or fullscreen window
-covers the screen or the screen is locked. Measure your own machine with
-`python3 -m aether --bench`.
-
-## Use it as your desktop wallpaper (GNOME / Wayland)
-
-A normal Wayland app can't put itself behind the desktop, so the repository
-ships a small GNOME Shell extension (`gnome-extension/`) that does it:
-
-- launches `python3 -m aether --wallpaper` at login and restarts it if it
-  exits (and falls back to the older CPU renderer, Mirage, if Aether keeps
-  failing, e.g. no OpenGL 4.3)
-- moves its window into the desktop layer (below Desktop Icons and every
-  other window), on all workspaces, hidden from the dock, Alt-Tab and Overview
-- sizes it to the primary monitor
-- **pauses rendering** while a maximized or fullscreen window covers the
-  primary monitor, and while the screen is locked
-
-Install (GNOME Shell 48–51):
-
-```sh
-./install-wallpaper.sh                    # install + enable, then log out and back in once
-./install-wallpaper.sh --engine mirage    # use the original CPU renderer instead
-./install-wallpaper.sh --uninstall
-```
-
-Wayland only picks up a new extension, or changes to `extension.js`, after
-you log out and back in. Re-run the script after moving the repository,
-since it records the repository path. Logs:
-`journalctl --user -b | grep -i mirage`.
-
-Limits: the wallpaper covers the primary monitor only, and it doesn't react
-to the mouse (the desktop window doesn't receive pointer events).
-
-## Run it by hand
-
-```sh
-python3 -m aether                        # fullscreen: Space/N next scene, P pause, F11, Esc quit
-python3 -m aether --windowed --debug     # in a window, logging scene changes and fps
-python3 -m aether --scene "Galaxy"       # stay on one scene (see --list)
-python3 -m aether --list
-python3 -m aether --bench                # per-scene GPU frame time at 1920x1080
-python3 -m aether --preview out.png --scene Physarum --time 40
-python3 -m aether --sheet sheet.png      # every scene at 8s, 35s and 70s
-```
-
-Options: `--seed N`, `--fps F` (default 30), `--battery-fps F` (20),
-`--quality Q` (0.4–1.0 of screen resolution for the simulations, default
-0.75; lower it on weaker GPUs), `--size WxH` for the headless modes.
-
-## Aether layout
-
-```
-aether/
-  app.py        GTK 4 GLArea front end, frame pacing, wallpaper signals, battery
-  engine.py     scene scheduling, noise dissolves, bloom, ACES tone map, auto-exposure
-  gl.py         ctypes OpenGL 4.3 bindings + Program/Texture/Buffer helpers
-  glsl.py       shared GLSL: hashes, simplex & curl noise, fbm, palette lookup
-  palettes.py   15 curated gradient palettes that crossfade over time
-  headless.py   surfaceless EGL context for previews and benchmarks
-  preview.py    --preview / --sheet / --bench
-  scenes/       one file per scene, plus base.py (Scene, Drift, camera helpers)
-```
-
-Adding a scene: subclass `Scene` in `aether/scenes/`, implement `setup`,
-`step(dt)` and `draw()` (render HDR linear colour into `self.out`), and add
-it to `REGISTRY` in `scenes/__init__.py`. Check it with
-`python3 -m aether --sheet x.png --scene "Name"`.
+</div>
 
 ---
 
-# Mirage (original CPU renderer)
+## The scenes
 
-The first version: twelve pycairo scenes rendered on the CPU at reduced
-resolution. It still works and is the extension's fallback.
+Every time a scene comes on screen it gets a fresh seed, shape, palette and
+running time, and its parameters keep drifting while you watch. You will
+never see the same picture twice.
 
-### Run
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/silk.jpg" alt="Silk"><br><b>Silk</b>: 262k particles riding 3D curl noise, leaving luminous threads that keep re-braiding</td>
+<td width="50%"><img src="docs/screenshots/physarum.jpg" alt="Physarum"><br><b>Physarum</b>: half a million slime-mold agents growing transport networks, with up to three rival species</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/attractor.jpg" alt="Attractor"><br><b>Attractor</b>: Clifford and de Jong maps piled into glowing density fields that fold and re-bloom</td>
+<td><img src="docs/screenshots/reaction.jpg" alt="Reaction"><br><b>Reaction</b>: Gray-Scott reaction-diffusion as lit enamel: coral, mitosis, mazes and spirals invading each other</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/ink.jpg" alt="Ink"><br><b>Ink</b>: a stable-fluids simulation stirred by unseen brushes that bleed coloured ink</td>
+<td><img src="docs/screenshots/julia.jpg" alt="Julia"><br><b>Julia</b>: Julia sets of z²+c as c glides along the edge of the Mandelbrot set</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/particle-life.jpg" alt="Particle Life"><br><b>Particle Life</b>: species with lopsided attractions forming cells, worms and chasers; heat waves melt crystal into gas</td>
+<td><img src="docs/screenshots/galaxy.jpg" alt="Galaxy"><br><b>Galaxy</b>: spiral galaxies on a close encounter, throwing out tidal tails and bridges</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/chaos.jpg" alt="Chaos"><br><b>Chaos</b>: 3D strange attractors (Lorenz, Aizawa, Thomas, Halvorsen, Dadras, Rössler) pouring from one shape into the next</td>
+<td><img src="docs/screenshots/nebula.jpg" alt="Nebula"><br><b>Nebula</b>: a calm interlude of domain-warped gas and twinkling stars</td>
+</tr>
+</table>
 
-```sh
-./mirage.sh                      # fullscreen, decorated=False
-python3 -m mirage                # same, from the repository directory
-./mirage.sh --windowed           # windowed, for quick testing
-python3 -m mirage --windowed     # same
-python3 -m mirage --wallpaper    # wallpaper mode (normally started by the extension)
+**Why it never feels like it's on repeat.** While a scene is on screen, its
+parameters glide between random waypoints: feed and kill rates, sensor
+angles, attraction matrices, attractor coefficients, camera paths and
+palettes. Some scenes also have events: new seeds in Reaction, heat waves in
+Particle Life, morphs between systems in Chaos, the collision in Galaxy. The
+scheduler never picks any of the last four scenes again.
+
+**Calm by design.** Slow cameras and parameter drift, no hard cuts, bloom and
+filmic tone-mapping with soft highlights, dithering against banding, and a
+gentle auto-exposure so every scene sits at a similar brightness.
+
+## Quick start
+
+You need:
+
+- **OpenGL 4.3.** Any Intel HD 5xx / UHD 6xx or newer with Mesa, and most
+  GPUs from the last decade.
+- **`python3` with PyGObject and GTK 4.** On Ubuntu that's
+  `sudo apt install python3-gi gir1.2-gtk-4.0`. There are no pip installs:
+  OpenGL is called through a small ctypes layer (`aether/gl.py`).
+- **Pillow** *(optional)*, only for screenshots and contact sheets:
+  `sudo apt install python3-pil`.
+
+Then:
+
+```bash
+git clone https://github.com/jtalbott22/wallpaper.git
+cd wallpaper
+python3 -m aether --windowed
 ```
 
-Or from the repository directory without the wrapper:
+| Key | Action |
+|---|---|
+| `Space` / `N` | Next scene |
+| `P` | Pause / resume |
+| `F11` | Toggle fullscreen |
+| `Esc` | Quit |
 
-```sh
-python3 -m mirage
+## Make it your wallpaper
+
+A normal Wayland app can't put itself behind the desktop, so the repository
+ships a small GNOME Shell extension (`gnome-extension/`) that does it for you.
+It works with GNOME Shell 48–51.
+
+**1. Install it**
+
+```bash
+./install-wallpaper.sh
 ```
 
-### Controls
+**2. Log out and back in once.** On Wayland, GNOME only notices a new
+extension at login. After that, Aether starts with your session.
 
-| Key             | Action                                |
-|-----------------|---------------------------------------|
-| `Space` / `N`   | Skip to the next scene                |
-| `P`             | Pause / resume                        |
-| `H`             | Toggle the control hint at the bottom |
-| `F11`           | Toggle fullscreen                     |
-| `Esc`           | Quit                                  |
+What the extension does:
 
-The mouse should be allowed to rest anywhere on the screen; scenes react
-gently to the pointer (or to a slow phantom drift when the mouse is idle).
+- launches `python3 -m aether --wallpaper` at login, restarts it if it exits,
+  and falls back to the older CPU renderer, [Mirage](#mirage-the-original-cpu-renderer),
+  if Aether keeps failing (for example, no OpenGL 4.3)
+- puts the window in the desktop layer, below Desktop Icons and every other
+  window, on all workspaces, hidden from the dock, Alt-Tab and Overview
+- sizes it to the primary monitor
+- **pauses rendering** while a maximized or fullscreen window covers the
+  screen, and while the screen is locked, so it costs nothing while you work
 
-### Options
+**Limits:** it covers the primary monitor only, and it doesn't react to the
+mouse (the desktop window doesn't receive pointer events).
+
+## How-tos
+
+### Switch to the CPU renderer
+
+```bash
+./install-wallpaper.sh --engine mirage
+```
+
+Run `./install-wallpaper.sh` again with no options to switch back to Aether.
+
+### Uninstall
+
+```bash
+./install-wallpaper.sh --uninstall
+```
+
+### Move the repository
+
+The extension remembers where the repository lives. If you move or rename
+the folder, run `./install-wallpaper.sh` again from its new location.
+
+### Watch just one scene
+
+```bash
+python3 -m aether --list
+```
+
+```bash
+python3 -m aether --windowed --scene "Galaxy"
+```
+
+### Make it lighter on a weak GPU
+
+Lower the simulation resolution (0.4–1.0 of the screen, default 0.75) or the
+frame rate:
+
+```bash
+python3 -m aether --windowed --quality 0.5 --fps 24
+```
+
+On battery Aether drops to 20 fps on its own (`--battery-fps` changes that).
+
+### Measure your machine
+
+```bash
+python3 -m aether --bench
+```
+
+This prints the GPU time per frame for every scene at 1920×1080. On an
+i7-8550U laptop with Intel UHD 620 graphics, scenes take about 5 ms (Chaos,
+Galaxy) to 12–14 ms (Reaction, Julia, Attractor, Particle Life) against a
+33 ms budget at 30 fps, using about 5% of one CPU core.
+
+### Take screenshots
+
+Both of these render headlessly, with no window or display needed:
+
+```bash
+python3 -m aether --preview out.png --scene Physarum --time 40
+```
+
+```bash
+python3 -m aether --sheet sheet.png
+```
+
+`--preview` grabs one frame after `--time` simulated seconds. `--sheet` makes
+a contact sheet of every scene at 8, 35 and 70 seconds. Add `--seed N` for a
+different look and `--size WxH` to change the resolution. The images in this
+README were made this way.
+
+### See what it's doing
+
+```bash
+python3 -m aether --windowed --debug
+```
+
+```bash
+journalctl --user -b | grep -i wallpaper
+```
+
+The first logs scene changes and frame rate in a window. The second shows
+the extension's log, including the renderer's output.
+
+### All options
+
+| Option | Default | What it does |
+|---|---|---|
+| `--windowed` | | run in a normal window instead of fullscreen |
+| `--wallpaper` | | wallpaper mode, used by the extension (`SIGUSR1` pauses, `SIGUSR2` resumes) |
+| `--scene NAME` | | show only this scene |
+| `--seed N` | random | repeatable runs |
+| `--fps F` | 30 | target frame rate |
+| `--battery-fps F` | 20 | frame-rate cap on battery |
+| `--quality Q` | 0.75 | simulation resolution, 0.4–1.0 of the screen |
+| `--debug` | | log scene changes and frame rate |
+| `--list` | | list scenes and exit |
+| `--preview OUT.png` | | render one frame headlessly and exit |
+| `--time T` | 20 | simulated seconds before `--preview` grabs its frame |
+| `--sheet OUT.png` | | render a contact sheet of every scene and exit |
+| `--bench` | | measure per-scene GPU frame time and exit |
+| `--size WxH` | 1920x1080 | size for `--preview`, `--sheet` and `--bench` |
+
+### Add your own scene
+
+1. Subclass `Scene` in a new file under `aether/scenes/`.
+2. Implement `setup`, `step(dt)` and `draw()`. `draw()` renders HDR linear
+   colour into `self.out`.
+3. Add it to `REGISTRY` in `aether/scenes/__init__.py`.
+4. Check it:
+
+```bash
+python3 -m aether --sheet x.png --scene "Name"
+```
+
+## How it was made
+
+This project was built by two AI coding agents in about a day: first a model
+running entirely on my own hardware at home, then Claude.
+
+### Act 1: a model running at home
+
+It started on the evening of Monday, November 23, 2026, in
+[opencode](https://opencode.ai) running **Inkling 2 Mini**, the new model
+from Thinking Machines. It was served by llama.cpp from my
+[Self-hosted AI Stack](https://github.com/jtalbott22/Self-hosted-AI-Stack)
+on a GPU workstation at home. The prompt:
+
+> Can you help me build a cool live wallpaper app for ubuntu? I want it to
+> have beautiful particle and physics visualizations that aren't too jarring
+> to look at but keep you curious about what will happen next. It should
+> never feel like it's on repeat and endlessly change…
+
+Over the next day Inkling built **Mirage**: twelve scenes drawn with pycairo
+on the CPU, with a scheduler, eight palettes and an adaptive quality
+controller. Along the way I asked it to fix visuals that were pinned to the
+bottom-right corner, and whether it could run as my actual wallpaper.
+
+<img src="docs/screenshots/mirage-strip.jpg" alt="Mirage: Aurora Curtain, Constellation Drift and Orbital Garden" width="100%">
+
+| Inkling 2 Mini in opencode | |
+|---|---|
+| Ran | 7:36 pm Nov 23 → 4:47 pm Nov 24 |
+| Model turns | 268 |
+| Tool calls | 301 (217 shell, 77 file reads, 3 searches, 2 web fetches, 2 questions to me) |
+| Time spent generating | 13.9 hours |
+| Tokens out | 259k |
+| Prompt tokens read from cache | 19.4 million |
+| Context compactions | 4 |
+| Result | Mirage: 2,040 lines of Python, 12 CPU scenes |
+| Cost | $0, on my own hardware |
+
+It worked, but it didn't wow me the way I'd hoped.
+
+### Act 2: switching up to Claude
+
+At 4:55 pm on November 24 I moved to Claude Code running **Claude Opus 5.5**.
+First I asked it to get Mirage running as a real animated wallpaper on this
+laptop. It wrote the GNOME Shell extension and the installer, and Mirage was
+on my desktop about 13 minutes later.
+
+Then I gave it the same original prompt and asked it to take its own crack
+at it. It moved everything to the GPU: a dependency-free ctypes binding for
+OpenGL 4.3, compute-shader simulations, noise dissolves between scenes, bloom,
+ACES tone-mapping and auto-exposure. That became **Aether**, with Mirage kept
+as the extension's fallback.
+
+| Claude Opus 5.5 in Claude Code | |
+|---|---|
+| Ran | 4:55 pm → 5:51 pm Nov 24 (56 minutes) |
+| Model turns | 258 |
+| Tool calls | 125 (73 shell, 20 file writes, 16 file reads, 2 edits, 14 progress updates) |
+| Tokens out | 648k |
+| Result | Aether (3,484 lines of Python and GLSL, 10 GPU scenes) plus the GNOME extension (311 lines) |
+
+### The takeaway
+
+A model running entirely on hardware at home went from a one-paragraph idea
+to a working, twelve-scene wallpaper overnight, for free. A frontier model
+then took the same idea much further in under an hour. Both are in this repo,
+and the home-built one is still the safety net.
+
+---
+
+## Mirage (the original CPU renderer)
+
+Mirage is the first version: twelve pycairo scenes rendered on the CPU at
+reduced resolution. It still works and is the extension's fallback when
+Aether can't start.
+
+```bash
+./mirage.sh --windowed
+```
+
+```bash
+python3 -m mirage --preview out.png --scene "Aurora Curtain" --palette aurora
+```
+
+**Scenes:** Nebula Drift · Plasma Rise · Liquid Flow · Constellation Drift ·
+Quantum Interference · Aurora Curtain · Orbital Garden · Starfield Horizon ·
+Fireflies Swarm · Ocean Swell · DNA Helix · Fractal Mirror
+
+**Palettes:** midnight, ember, aurora, dusk, pearl, rose, forest and mono,
+picked at random and never the same twice in a row.
+
+Mirage also takes `H` to toggle the control hint, and reacts gently to the
+mouse (or to a slow phantom drift when the mouse is idle).
+
+<details>
+<summary>All Mirage options</summary>
 
 ```
 python3 -m mirage [--windowed | --wallpaper] [--seed N] [--scene NAME]
                   [--palette NAME] [--quality 0.30-1.00] [--fps F]
                   [--battery-fps F] [--debug]
 python3 -m mirage --preview OUT.png [--scene NAME] [--palette NAME]
+python3 -m mirage.preview --scene NAME --palette NAME --size WxH --frames N --out OUT.png
 ```
 
-- `--windowed` — run as a normal window instead of fullscreen (default).
-- `--wallpaper` — desktop-wallpaper mode for the GNOME extension: no
-  overlays or key controls; `SIGUSR1` pauses, `SIGUSR2` resumes.
-- `--battery-fps F` — frame-rate cap on battery in `--wallpaper` mode (default `15`).
-- `--seed N` — seed the initial scene/palette selection (for repeatable runs).
-- `--scene NAME` — force the first scene (e.g. `"Aurora Curtain"`).
-- `--palette NAME` — force the first scene palette (e.g. `ember`).
-- `--quality` — initial internal render scale, `0.30`–`1.00` (default `0.5`).
-  The app adapts this automatically at runtime, lowering when frames
-  get slow and raising slowly when headroom appears.
-- `--fps` — target frame rate (default `30`).
-- `--debug` — log scene changes and quality adjustments to stderr.
-- `--preview OUT.png` — render a single frame headlessly and exit
-  (no display needed). Useful for checking a scene without opening it.
+- `--windowed`: run in a normal window instead of fullscreen.
+- `--wallpaper`: wallpaper mode for the extension, with no overlays or key
+  controls; `SIGUSR1` pauses, `SIGUSR2` resumes.
+- `--battery-fps F`: frame-rate cap on battery in wallpaper mode (default 15).
+- `--seed N`: seed the first scene and palette, for repeatable runs.
+- `--scene NAME`: force the first scene, for example `"Aurora Curtain"`.
+- `--palette NAME`: force the first palette, for example `ember`.
+- `--quality`: starting render scale, 0.30–1.00 (default 0.5). Mirage lowers
+  it when frames get slow and raises it slowly when there's headroom.
+- `--fps`: target frame rate (default 30).
+- `--debug`: log scene changes and quality adjustments.
+- `--preview OUT.png`: render one frame headlessly and exit.
 
-### Scenes
+</details>
 
-Nebula Drift · Plasma Rise · Liquid Flow · Constellation Drift ·
-Quantum Interference · Aurora Curtain · Orbital Garden · Starfield
-Horizon · Fireflies Swarm · Ocean Swell · DNA Helix · Fractal Mirror
-
-Eight palettes — midnight, ember, aurora, dusk, pearl, rose, forest, mono —
-are picked at random on each scene change, never repeating the same
-palette back-to-back.
-
-### Headless preview
-
-To render a scene to a PNG without a display:
-
-```sh
-python3 -m mirage --preview /tmp/out.png --scene "Aurora Curtain" --palette aurora
-# or the standalone previewer with more control:
-python3 -m mirage.preview --scene "Nebula Drift" --palette midnight \
-                          --size 1280x720 --frames 5 --out /tmp/out.png
-```
-
-### Project layout
+## Project layout
 
 ```
 install-wallpaper.sh   installs the GNOME Shell extension
-gnome-extension/       extension that runs Mirage as the desktop wallpaper
-mirage/
-  app.py          GTK application (window, overlay, labels, input, tick loop)
-  __main__.py     CLI entry point
-  scheduler.py    Scene/palette rotation, never-back-to-back, durations
-  renderer.py     Low-res surface + crossfade + full-screen upscale
-  perf.py         Adaptive quality controller
-  sprites.py      Hand-built soft glow/gradient sprites (cached)
-  palettes.py     8 calm palettes
-  util.py         math helpers, smooth noise, shared RNG
-  preview.py      Headless preview renderer
-  scenes/         12 scenes + base class + registry
+gnome-extension/       extension that runs Aether (or Mirage) as the desktop wallpaper
+aether/                GPU renderer
+  app.py               GTK 4 GLArea front end, frame pacing, wallpaper signals, battery
+  engine.py            scene scheduling, noise dissolves, bloom, ACES tone map, auto-exposure
+  gl.py                ctypes OpenGL 4.3 bindings and Program/Texture/Buffer helpers
+  glsl.py              shared GLSL: hashes, simplex and curl noise, fbm, palette lookup
+  palettes.py          15 curated gradient palettes that crossfade over time
+  headless.py          surfaceless EGL context for previews and benchmarks
+  preview.py           --preview, --sheet and --bench
+  scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
+mirage/                CPU renderer
+  app.py               GTK application: window, overlay, input, tick loop
+  scheduler.py         scene and palette rotation, never back-to-back
+  renderer.py          low-res surface, crossfade, full-screen upscale
+  perf.py              adaptive quality controller
+  sprites.py           cached soft glow and gradient sprites
+  palettes.py          8 calm palettes
+  preview.py           headless preview renderer
+  scenes/              12 scenes, base class and registry
+docs/screenshots/      images in this README, rendered with --preview
 ```
 
-### Notes
+## License
 
-- All rendering is software (pycairo), so nothing is wasted on GPU
-  drivers and it runs identically across Wayland sessions.
-- Scenes never repeat back-to-back: the scheduler keeps a short history
-  of the last few scenes/palettes and always picks from what remains.
-- Internal render resolution scales with `--quality` (smaller = faster);
-  the finished frame is upscaled to the window so the widget never does
-  any scaling.
-- Crossfades between scenes take ~2.2 s.
+[MIT](LICENSE)
