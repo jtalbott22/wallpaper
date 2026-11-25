@@ -1,0 +1,8 @@
+{
+  "uuid": "mirage-wallpaper@mirage.local",
+  "name": "Aether Live Wallpaper",
+  "description": "Runs Aether (or the older Mirage) behind your windows as an animated desktop wallpaper. Pauses when a maximized or fullscreen window covers the screen, and while the screen is locked.",
+  "shell-version": ["48", "49", "50", "51"],
+  "session-modes": ["user", "unlock-dialog"],
+  "version": 2
+}
