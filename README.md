@@ -15,6 +15,7 @@ Windows and macOS.
 **Linux, Windows, macOS and any browser, [in one evening](#act-3-everywhere-in-one-evening).**
 [Try it in your browser →](https://joshuaallentalbott.com/aether.html)
 
+[What "Aether" means](#what-aether-means) ·
 [Scenes](#the-scenes) ·
 [Quick start](#quick-start) ·
 [Make it your wallpaper](#make-it-your-wallpaper) ·
@@ -27,6 +28,26 @@ Windows and macOS.
 </div>
 
 ---
+
+## What "Aether" means
+
+> **aether** /ˈiː.θər/ *(also ether)*, noun
+>
+> 1. In Greek myth and philosophy, the pure, glowing upper air above the
+>    clouds, which the gods breathed. Aristotle made it the fifth element,
+>    the stuff the stars and heavens are made of (hence *quintessence*, the
+>    "fifth essence").
+> 2. In 19th-century physics, an invisible medium thought to fill all of
+>    space and carry light. The Michelson–Morley experiment of 1887 found no
+>    trace of it, and the idea was dropped.
+>
+> From Greek *aithēr*, "upper air, clear sky", from *aithein*, "to burn, to shine".
+
+Both meanings fit. A wallpaper is the medium that fills the space behind
+everything else on your screen, and this one glows: light drifting through
+the space behind your windows. It was also the step up from the first
+version, *Mirage*: an illusion you see in the air, followed by the
+shining air itself.
 
 ## The scenes
 

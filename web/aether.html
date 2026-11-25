@@ -70,6 +70,7 @@
   .panel{
     position:fixed; left:50%; bottom:calc(max(18px, env(safe-area-inset-bottom)) + 66px); transform:translateX(-50%);
     width:min(560px, calc(100vw - 24px)); padding:14px;
+    max-height:calc(100dvh - 150px); overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y;
     background:var(--glass); border:1px solid var(--line); border-radius:16px;
     -webkit-backdrop-filter:blur(18px) saturate(1.3); backdrop-filter:blur(18px) saturate(1.3);
     box-shadow:0 12px 40px rgba(0,0,0,.45);
@@ -187,6 +188,8 @@
     <dt><kbd>C</kbd></dt><dd>Save this frame as a PNG</dd>
     <dt><kbd>H</kbd></dt><dd>Hide or show the controls</dd>
   </dl>
+  <h2 class="story">The name</h2>
+  <p><strong>Aether</strong> <span lang="grc">(Greek <em>aithēr</em>, “shining upper air”)</span>: in Greek myth, the pure, glowing air above the clouds that the gods breathed, Aristotle’s fifth element; in 19th-century physics, an invisible medium once thought to fill all of space and carry light. Here, it’s light that fills the space behind your windows.</p>
   <h2 class="story">The story</h2>
   <p><strong>Linux, Windows, macOS and your browser, in one evening.</strong> Aether started as a Linux-only wallpaper. Between 8:21 and 11:07 pm one night it became a WebGL2 engine with native hosts for Windows and macOS, built side by side by three Claude Code sessions on three machines. <a href="https://github.com/jtalbott22/wallpaper#act-3-everywhere-in-one-evening" target="_blank" rel="noopener">Read how</a> or <a href="https://github.com/jtalbott22/wallpaper" target="_blank" rel="noopener">get it as your wallpaper</a>.</p>
 </div>
