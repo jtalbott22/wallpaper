@@ -34,7 +34,10 @@
   body.idle .bar{ transform:translate(-50%, 12px); }
 
   .top{ position:fixed; top:max(16px, env(safe-area-inset-top)); left:16px; right:16px; display:flex; align-items:center; gap:12px; pointer-events:none; }
-  .brand{ display:flex; align-items:center; gap:10px; pointer-events:auto; text-decoration:none; color:var(--ink); }
+  .brand{ display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--ink); }
+  /* the strip lets drags through to the picture; its links and buttons still take clicks (but not while hidden) */
+  .top > a, .top > button{ pointer-events:auto; }
+  body.idle .top > a, body.idle .top > button{ pointer-events:none; }
   .brand svg{ width:22px; height:22px; }
   .brand b{ font-weight:650; letter-spacing:.02em; font-size:16px; }
   .now{ color:var(--ink-2); font-size:14.5px; }
