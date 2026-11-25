@@ -27,8 +27,9 @@ hosts, so both platforms use that page and only need a thin native wrapper.
   Physarum and Attractor need `EXT_color_buffer_float`. Without it, the page
   shows only Nebula and Julia.
 
-Tested so far only in headless Chromium on Linux (software WebGL). It has
-not yet run in WebView2 or WKWebView.
+Runs in WebView2 on Windows 11 (the native host in `windows/`, with
+`EXT_color_buffer_float`, so all five scenes) and in headless Chromium on
+Linux. It has not yet run in WKWebView.
 
 ## Try it now, no code
 
@@ -43,7 +44,8 @@ Both pause on their own when a fullscreen app is in front.
 
 ## Native wrapper: Windows
 
-Brief for a Claude Code session on the Windows machine:
+**Done:** see [`windows/README.md`](../windows/README.md). The brief it was
+built from:
 
 > In this repository (pull first), add a native Windows wallpaper host under
 > `windows/` that shows `web/wallpaper.html` behind the desktop icons. Don't

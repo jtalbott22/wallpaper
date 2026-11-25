@@ -12,6 +12,7 @@ into the next, behind your windows on Ubuntu / GNOME.
 [Scenes](#the-scenes) ·
 [Quick start](#quick-start) ·
 [Make it your wallpaper](#make-it-your-wallpaper) ·
+[Windows](#windows) ·
 [How-tos](#how-tos) ·
 [On the web](#on-the-web) ·
 [How it was made](#how-it-was-made)
@@ -115,6 +116,31 @@ What the extension does:
 
 **Limits:** it covers the primary monitor only, and it doesn't react to the
 mouse (the desktop window doesn't receive pointer events).
+
+## Windows
+
+On Windows, a small native host (`windows/`, C# / .NET 8 with WebView2) runs
+the [web version](#on-the-web) — five of the scenes — behind the desktop
+icons on every monitor.
+
+**1. Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)**
+(or newer). Windows 11 already has the WebView2 Runtime it needs.
+
+**2. Build and install it** from PowerShell in the repository:
+
+```powershell
+.\windows\install.ps1 -StartAtLogin
+```
+
+That puts it in `%LOCALAPPDATA%\Programs\Aether`, starts it, and starts it
+at every login. Run the script again to update; `-Uninstall` removes it.
+
+Its tray icon has a brightness slider, pause and resume, a scene picker and
+"Start at login". It pauses on its own on any monitor a maximized or
+fullscreen window covers, while the session is locked, and in battery saver.
+It works with both the classic and the Windows 11 24H2 desktop layout and
+reattaches when Explorer restarts. See [windows/README.md](windows/README.md)
+for building from source, options and troubleshooting.
 
 ## How-tos
 
@@ -296,8 +322,9 @@ event. The script also picks up changes made in other tabs.
 **As a desktop wallpaper on Windows and macOS**
 
 [`web/wallpaper.html`](web/wallpaper.html) is a full-screen, full-strength version for wallpaper
-hosts. You can use it today with Lively Wallpaper (Windows) or Plash (macOS).
-See [docs/PLATFORMS.md](docs/PLATFORMS.md) for how, and for the plan for native apps.
+hosts. On Windows, the native host in [`windows/`](#windows) shows it behind
+the icons. You can also use it with Lively Wallpaper (Windows) or Plash (macOS);
+see [docs/PLATFORMS.md](docs/PLATFORMS.md) for how, and for the macOS plan.
 
 More canvas options: `data-strength` overrides the base strength, `data-pixels`
 sets the resolution budget (default about 0.5 megapixels), and `data-parallax="0"`
@@ -443,6 +470,7 @@ aether/                GPU renderer
   scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
 web/aether-bg.js       WebGL2 port for web pages (5 scenes)
 web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
+windows/               native Windows host: WebView2 behind the desktop icons (C#, .NET 8)
 mirage/                CPU renderer
   app.py               GTK application: window, overlay, input, tick loop
   scheduler.py         scene and palette rotation, never back-to-back
