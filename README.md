@@ -2,12 +2,15 @@
 
 # Aether
 
+*Started with an inkling.*
+
 **A GPU live wallpaper of particles, fluids and fractals that never repeats.**
 
 <img src="docs/screenshots/hero.webp" alt="Aether drifting from Particle Life into Silk, Reaction and Galaxy" width="720">
 
 Ten real-time simulations on your graphics chip, dissolving slowly from one
-into the next, behind your windows on Ubuntu / GNOME.
+into the next, behind your windows on Ubuntu / GNOME, with native hosts for
+Windows and macOS.
 
 [Scenes](#the-scenes) ·
 [Quick start](#quick-start) ·
@@ -364,8 +367,9 @@ page URL to stay on one scene, which is handy for screenshots.
 
 ## How it was made
 
-This project was built by two AI coding agents in about a day: first a model
-running entirely on my own hardware at home, then Claude.
+It started with an inkling, quite literally. This project was built by two AI
+coding agents in about a day: first Inkling, a model running entirely on my
+own hardware at home, then Claude.
 
 ### Act 1: a model running at home
 
