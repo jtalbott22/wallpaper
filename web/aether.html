@@ -11,7 +11,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Aether</title>
-<meta name="description" content="Aether: ten slowly evolving generative scenes, running live in your browser with WebGL2.">
+<meta name="description" content="Aether: ten slowly evolving generative scenes, running live in your browser with WebGL2. One engine for Linux, Windows, macOS and the web, built in one evening.">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Crect width='18' height='18' rx='4' fill='%23000'/%3E%3Cg fill='none' stroke='%23fff'%3E%3Ccircle cx='9' cy='9' r='6.5' stroke-width='1.4'/%3E%3Cpath d='M4.5 11C7 14.5 12 13 13.5 9' stroke-width='1.2'/%3E%3C/g%3E%3Ccircle cx='8' cy='7.5' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
 <style>
@@ -86,6 +86,8 @@
   .keys{ display:grid; grid-template-columns:auto 1fr; gap:8px 14px; margin:0; font-size:14px; }
   .keys dt{ text-align:right; white-space:nowrap; }
   .keys dd{ margin:0; color:var(--ink-2); }
+  .panel h2.story{ margin:16px 0 0; padding-top:12px; border-top:1px solid var(--line); }
+  .panel h2.story + p{ margin-top:6px; }
   .panel p{ margin:12px 0 0; font-size:13px; color:var(--ink-2); line-height:1.45; }
   .panel a{ color:var(--accent); }
 
@@ -185,7 +187,8 @@
     <dt><kbd>C</kbd></dt><dd>Save this frame as a PNG</dd>
     <dt><kbd>H</kbd></dt><dd>Hide or show the controls</dd>
   </dl>
-  <p>The same engine runs as a live desktop wallpaper on Linux, macOS and Windows. <a href="https://github.com/jtalbott22/wallpaper" target="_blank" rel="noopener">Get it on GitHub</a>.</p>
+  <h2 class="story">The story</h2>
+  <p><strong>Linux, Windows, macOS and your browser, in one evening.</strong> Aether started as a Linux-only wallpaper. Between 8:21 and 11:07 pm one night it became a WebGL2 engine with native hosts for Windows and macOS, built side by side by three Claude Code sessions on three machines. <a href="https://github.com/jtalbott22/wallpaper#act-3-everywhere-in-one-evening" target="_blank" rel="noopener">Read how</a> or <a href="https://github.com/jtalbott22/wallpaper" target="_blank" rel="noopener">get it as your wallpaper</a>.</p>
 </div>
 
 <div class="toast" id="toast" aria-hidden="true"></div>
@@ -259,7 +262,7 @@
     var t = $('toast');
     t.innerHTML = '';
     t.appendChild(document.createTextNode(s.name));
-    if (first) { var sm = document.createElement('small'); sm.textContent = 'Press ? for shortcuts'; t.appendChild(sm); first = false; }
+    if (first) { var sm = document.createElement('small'); sm.textContent = 'Press ? for shortcuts and the story'; t.appendChild(sm); first = false; }
     if (anyPanel()) return;
     t.classList.add('show');
     clearTimeout(toastT);
