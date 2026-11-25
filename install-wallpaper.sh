@@ -29,6 +29,8 @@ case "$ENGINE" in aether|mirage) ;; *) echo "unknown engine: $ENGINE (use aether
 
 mkdir -p "$DEST"
 cp "$REPO/gnome-extension/metadata.json" "$REPO/gnome-extension/extension.js" "$DEST/"
+mkdir -p "$DEST/icons"
+cp "$REPO/gnome-extension/icons/"*.svg "$DEST/icons/"
 printf '%s\n' "$REPO" > "$DEST/mirage-dir"
 printf '%s\n' "$ENGINE" > "$DEST/engine"
 echo "Installed to $DEST ($ENGINE renderer, repository $REPO)"

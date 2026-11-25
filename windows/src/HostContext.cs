@@ -39,8 +39,9 @@ sealed class HostContext : ApplicationContext
     string lastState = "";
 
     readonly NotifyIcon tray;
-    readonly Icon iconOn, iconOff;
-    readonly ToolStripMenuItem statusItem, pauseItem, loginItem, sceneMenu;
+    Icon? trayIcon;
+    string trayIconKey = "";
+    readonly ToolStripMenuItem statusItem, pauseItem, loginItem, sceneMenu, nextItem;
     readonly ToolStripLabel brightLabel;
     readonly TrackBar slider;
 
@@ -52,7 +53,6 @@ sealed class HostContext : ApplicationContext
         Log.Write("page folder " + webFolder);
 
         // tray
-        iconOn = MakeIcon(true); iconOff = MakeIcon(false);
         statusItem = new ToolStripMenuItem("Starting…") { Enabled = false };
         brightLabel = new ToolStripLabel();
         slider = new TrackBar
@@ -69,18 +69,22 @@ sealed class HostContext : ApplicationContext
         sceneMenu.DropDownItems.Add(SceneItem(null, "All scenes, in turn"));
         sceneMenu.DropDownItems.Add(new ToolStripSeparator());
         foreach (var (key, title) in Scenes) sceneMenu.DropDownItems.Add(SceneItem(key, title));
+        nextItem = new ToolStripMenuItem("Next scene", null, (_, _) => NextScene());
 
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
             statusItem, new ToolStripSeparator(), brightLabel, sliderHost, new ToolStripSeparator(),
-            pauseItem, sceneMenu, loginItem, new ToolStripSeparator(),
+            pauseItem, sceneMenu, nextItem, loginItem, new ToolStripSeparator(),
+            new ToolStripMenuItem("Open Aether in browser", null, (_, _) => OpenPage()),
             new ToolStripMenuItem("Reload", null, (_, _) => Reload()),
             new ToolStripMenuItem("Open log folder", null, (_, _) => OpenFolder(Log.Folder)),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitThread()),
         });
         menu.Opening += (_, _) => { loginItem.Checked = Startup.Enabled; UpdateMenu(); };
-        tray = new NotifyIcon { Icon = iconOn, Text = "Aether", ContextMenuStrip = menu, Visible = true };
+        tray = new NotifyIcon { Text = "Aether", ContextMenuStrip = menu };
+        SetTrayIcon(false);
+        tray.Visible = true;
         tray.MouseClick += (_, e) =>
         {
             if (e.Button == MouseButtons.Left)   // left click opens the same menu
@@ -91,7 +95,8 @@ sealed class HostContext : ApplicationContext
         // what to listen to
         messages = new MessageWindow();
         messages.TaskbarCreated += () => { Log.Write("Explorer restarted"); DisposeViews(); layout = null; ScheduleRebuild(1500); };
-        messages.DisplayChanged += () => ScheduleRebuild(400);
+        messages.DisplayChanged += () => { ScheduleRebuild(400); UpdateMenu(); };
+        messages.ThemeChanged += UpdateMenu;   // light or dark taskbar
         messages.SessionLock += isLocked => { locked = isLocked; Log.Write(isLocked ? "session locked" : "session unlocked"); Evaluate(); };
 
         hookProc = OnWinEvent;
@@ -301,6 +306,26 @@ sealed class HostContext : ApplicationContext
         return item;
     }
 
+    void NextScene()
+    {
+        foreach (var v in views.Values) v.Run("window.Aether && Aether.next()");
+    }
+
+    /// <summary>The interactive page (web/aether.html) in the default browser.</summary>
+    void OpenPage()
+    {
+        var page = Path.Combine(webFolder, "aether.html");
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(page) { UseShellExecute = true });
+        }
+        catch (Exception e)
+        {
+            Log.Write("open page: " + e.Message);
+            MessageBox.Show($"Cannot open {page}\n\n{e.Message}", "Aether", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     void ToggleLogin()
     {
         try { Startup.Enabled = !Startup.Enabled; }
@@ -320,36 +345,38 @@ sealed class HostContext : ApplicationContext
         statusItem.Text = status;
         pauseItem.Text = settings.Paused ? "Resume" : "Pause";
         brightLabel.Text = $"Brightness  {Math.Round(settings.Brightness * 100)}%";
+        string sceneTitle = "All, in turn";
         foreach (ToolStripItem i in sceneMenu.DropDownItems)
-            if (i is ToolStripMenuItem mi) mi.Checked = Equals(mi.Tag, settings.Scene);
-        var paused = all != null || (n > 0 && c == n);
-        tray.Icon = paused ? iconOff : iconOn;
+            if (i is ToolStripMenuItem mi)
+            {
+                mi.Checked = Equals(mi.Tag, settings.Scene);
+                if (mi.Checked && mi.Tag != null) sceneTitle = mi.Text ?? "";
+            }
+        sceneMenu.Text = "Scene: " + sceneTitle;
+        nextItem.Enabled = n > 0 && all == null;
+        SetTrayIcon(all != null || (n > 0 && c == n));
         var tip = "Aether: " + status;
         tray.Text = tip.Length > 127 ? tip[..127] : tip;
     }
 
-    static Icon MakeIcon(bool on)
+    /// <summary>The Aether mark in the taskbar's colour, dimmed while paused.</summary>
+    void SetTrayIcon(bool dim)
     {
-        int s = Math.Max(16, SystemInformation.SmallIconSize.Width);
-        using var bmp = new Bitmap(s, s);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            var rect = new RectangleF(0.5f, 0.5f, s - 1.5f, s - 1.5f);
-            using var path = new GraphicsPath();
-            path.AddEllipse(rect);
-            using var brush = new PathGradientBrush(path)
-            {
-                CenterPoint = new PointF(s * 0.38f, s * 0.34f),
-                CenterColor = on ? Color.FromArgb(255, 255, 220, 150) : Color.FromArgb(255, 170, 170, 170),
-                SurroundColors = new[] { on ? Color.FromArgb(255, 70, 40, 160) : Color.FromArgb(255, 70, 70, 70) },
-            };
-            g.FillEllipse(brush, rect);
-        }
-        IntPtr h = bmp.GetHicon();
-        var icon = (Icon)Icon.FromHandle(h).Clone();
-        DestroyIcon(h);
-        return icon;
+        int size = Math.Max(16, SystemInformation.SmallIconSize.Width);
+        bool light = LightTaskbar();
+        var key = $"{size}/{light}/{dim}";
+        if (key == trayIconKey) return;
+        var old = trayIcon;
+        trayIcon = Icons.TrayIcon(size, light, dim);
+        trayIconKey = key;
+        tray.Icon = trayIcon;
+        old?.Dispose();
+    }
+
+    static bool LightTaskbar()
+    {
+        using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        return k?.GetValue("SystemUsesLightTheme") is int v && v != 0;
     }
 
     static void OpenFolder(string path)
@@ -381,7 +408,7 @@ sealed class HostContext : ApplicationContext
 sealed class MessageWindow : NativeWindow, IDisposable
 {
     readonly uint taskbarCreated = RegisterWindowMessage("TaskbarCreated");
-    public event Action? TaskbarCreated, DisplayChanged;
+    public event Action? TaskbarCreated, DisplayChanged, ThemeChanged;
     public event Action<bool>? SessionLock;
 
     public MessageWindow()
@@ -395,6 +422,8 @@ sealed class MessageWindow : NativeWindow, IDisposable
         if (m.Msg == (int)taskbarCreated) TaskbarCreated?.Invoke();
         else if (m.Msg is WM_DISPLAYCHANGE or WM_DPICHANGED) DisplayChanged?.Invoke();
         else if (m.Msg == WM_SETTINGCHANGE && (int)m.WParam == 0x2F /* SPI_SETWORKAREA */) DisplayChanged?.Invoke();
+        else if (m.Msg == WM_SETTINGCHANGE && m.LParam != 0 &&
+                 System.Runtime.InteropServices.Marshal.PtrToStringUni(m.LParam) == "ImmersiveColorSet") ThemeChanged?.Invoke();
         else if (m.Msg == WM_WTSSESSION_CHANGE)
         {
             if ((int)m.WParam == WTS_SESSION_LOCK) SessionLock?.Invoke(true);

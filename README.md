@@ -12,6 +12,10 @@ Ten real-time simulations on your graphics chip, dissolving slowly from one
 into the next, behind your windows on Ubuntu / GNOME, with native hosts for
 Windows and macOS.
 
+**Linux, Windows, macOS and any browser, [in one evening](#act-3-everywhere-in-one-evening).**
+[Try it in your browser →](https://joshuaallentalbott.com/aether.html)
+
+[What "Aether" means](#what-aether-means) ·
 [Scenes](#the-scenes) ·
 [Quick start](#quick-start) ·
 [Make it your wallpaper](#make-it-your-wallpaper) ·
@@ -24,6 +28,26 @@ Windows and macOS.
 </div>
 
 ---
+
+## What "Aether" means
+
+> **aether** /ˈiː.θər/ *(also ether)*, noun
+>
+> 1. In Greek myth and philosophy, the pure, glowing upper air above the
+>    clouds, which the gods breathed. Aristotle made it the fifth element,
+>    the stuff the stars and heavens are made of (hence *quintessence*, the
+>    "fifth essence").
+> 2. In 19th-century physics, an invisible medium thought to fill all of
+>    space and carry light. The Michelson–Morley experiment of 1887 found no
+>    trace of it, and the idea was dropped.
+>
+> From Greek *aithēr*, "upper air, clear sky", from *aithein*, "to burn, to shine".
+
+Both meanings fit. A wallpaper is the medium that fills the space behind
+everything else on your screen, and this one glows: light drifting through
+the space behind your windows. It was also the step up from the first
+version, *Mirage*: an illusion you see in the air, followed by the
+shining air itself.
 
 ## The scenes
 
@@ -117,6 +141,17 @@ What the extension does:
 - sizes it to the primary monitor
 - **pauses rendering** while a maximized or fullscreen window covers the
   screen, and while the screen is locked, so it costs nothing while you work
+- adds an **Aether menu to the top bar**, with the same ring-and-swirl icon as
+  the macOS menu bar item:
+  - a brightness slider (5–150%)
+  - pause and resume
+  - pick one scene or let it move through all of them, and skip to the next scene
+  - open the [interactive web version](#on-the-web) in your browser
+  - restart the wallpaper
+
+  Your choices are saved in `~/.config/aether/wallpaper.json`, and the renderer
+  re-reads them on `SIGHUP`, so changes apply without a restart. After updating
+  from an older version, log out and back in once to get the menu.
 
 **Limits:** it covers the primary monitor only, and it doesn't react to the
 mouse (the desktop window doesn't receive pointer events).
@@ -136,11 +171,13 @@ icons on every monitor.
 .\windows\install.ps1 -StartAtLogin
 ```
 
-That puts it in `%LOCALAPPDATA%\Programs\Aether`, starts it, and starts it
-at every login. Run the script again to update; `-Uninstall` removes it.
+That puts it in `%LOCALAPPDATA%\Programs\Aether` and the Start menu, starts
+it, and starts it at every login. Run the script again to update; `-Uninstall`
+removes it.
 
-Its tray icon has a brightness slider, pause and resume, a scene picker and
-"Start at login". It pauses on its own on any monitor a maximized or
+Its tray icon (the same Aether mark as on macOS, GNOME and the web) has a
+brightness slider, pause and resume, a scene picker, next scene, "Open Aether
+in browser" and "Start at login". It pauses on its own on any monitor a maximized or
 fullscreen window covers, while the session is locked, and in battery saver.
 It works with both the classic and the Windows 11 24H2 desktop layout and
 reattaches when Explorer restarts. See [windows/README.md](windows/README.md)
@@ -396,6 +433,21 @@ More canvas options: `data-strength` overrides the base strength, `data-pixels`
 sets the resolution budget (default about 0.5 megapixels), and `data-parallax="0"`
 turns parallax off.
 
+**Play with it in a browser**
+
+[`web/aether.html`](web/aether.html) is the full wallpaper experience in a tab, with
+controls: all ten scenes, full screen, pick or hold a scene, pause, change the
+speed (¼× to 3×), zoom in where you point (scroll or pinch) and drag to look
+around, set the brightness, and save the current frame as a PNG. Press `?` on
+the page for the keyboard shortcuts. Try it on
+[joshuaallentalbott.com/aether.html](https://joshuaallentalbott.com/aether.html),
+open the file locally, or use **Open Aether in Browser** in the Linux top bar menu.
+
+Pages can drive the engine through `window.Aether`: `scenes()`, `scene()`,
+`show(key)`, `next()`, `hold(bool)`, `pause(bool)`, `speed(x)`, `zoomAt(factor, x, y)`,
+`pan(dx, dy)`, `resetView()` and `snapshot()`. It fires an `aether-scene` event
+on `window` whenever a new scene starts.
+
 **Show one scene**
 
 Add `?aether=physarum` (or `nebula`, `julia`, `reaction`, `attractor`, `silk`,
@@ -407,7 +459,7 @@ page URL to stay on one scene, which is handy for screenshots.
 
 It started with an inkling, quite literally. This project was built by two AI
 coding agents in about a day: first Inkling, a model running entirely on my
-own hardware at home, then Claude.
+own hardware at home, then Claude. Then, in one evening, it went everywhere.
 
 ### Act 1: a model running at home
 
@@ -464,12 +516,50 @@ as the extension's fallback.
 | Tokens out | 648k |
 | Result | Aether (3,484 lines of Python and GLSL, 10 GPU scenes) plus the GNOME extension (311 lines) |
 
+### Act 3: everywhere in one evening
+
+At 8:21 pm that same evening this was a folder of Linux-only code that I
+pushed to GitHub. By 11:07 pm it ran on four platforms and was live on my
+website. Every step below is a commit you can open.
+
+The trick was one idea: don't port the desktop app, port the *engine*. Claude
+rebuilt the scenes in WebGL2, which every platform's web view can run, and
+each operating system only needed a thin native host to put that page behind
+the desktop icons. I opened a Claude Code session on my Windows PC and another
+on my Mac, pointed each at a short brief in
+[docs/PLATFORMS.md](docs/PLATFORMS.md), and let them build their hosts while
+this laptop kept going.
+
+| Time (Nov 24) | What landed |
+|---|---|
+| 8:21 pm | Linux-only code pushed to GitHub ([`9a6fdd6`](https://github.com/jtalbott22/wallpaper/commit/9a6fdd6)) |
+| 8:37 pm | Naming cleanup and this README ([`d7c60da`](https://github.com/jtalbott22/wallpaper/commit/d7c60da)) |
+| 9:16 pm | **Web:** WebGL2 port, then live behind [joshuaallentalbott.com](https://joshuaallentalbott.com/) ([`303eee2`](https://github.com/jtalbott22/wallpaper/commit/303eee2)) |
+| 9:26 pm | `wallpaper.html` and one brief per platform ([`4825e2e`](https://github.com/jtalbott22/wallpaper/commit/4825e2e)) |
+| 9:55 pm | **Windows:** native WebView2 host behind the desktop icons, built on the Windows PC ([`abb0978`](https://github.com/jtalbott22/wallpaper/commit/abb0978)) |
+| 10:17 pm | **macOS:** native WKWebView host with a menu bar item, built on the Mac ([`9a19cbc`](https://github.com/jtalbott22/wallpaper/commit/9a19cbc)) |
+| 10:41 pm | **Web:** all ten scenes ported, not just five ([`4d56722`](https://github.com/jtalbott22/wallpaper/commit/4d56722)) |
+| 11:07 pm | **Linux:** top bar menu to match the Mac's, plus the [interactive page](https://joshuaallentalbott.com/aether.html) ([`7134617`](https://github.com/jtalbott22/wallpaper/commit/7134617)) |
+
+| Platform | How it runs | Code |
+|---|---|---|
+| Linux (GNOME) | Python + OpenGL 4.3 compute shaders, GNOME Shell extension with a top bar menu | 3,548 + 560 lines |
+| Any browser | WebGL2, one dependency-free file, plus the interactive page | 2,322 lines |
+| Windows 11 | C# / .NET 8 + WebView2 behind the icons, tray menu | 1,009 lines |
+| macOS | Swift + WKWebView at the desktop level, menu bar item | 874 lines |
+
+That's 2 hours 46 minutes from "Linux only" to "everywhere". Three machines,
+three Claude Code sessions, one evening. Every platform got the same ten
+scenes, the same saved brightness, the same pause-when-covered behaviour and
+the same icon.
+
 ### The takeaway
 
 A model running entirely on hardware at home went from a one-paragraph idea
 to a working, twelve-scene wallpaper overnight, for free. A frontier model
-then took the same idea much further in under an hour. Both are in this repo,
-and the home-built one is still the safety net.
+then took the same idea much further in under an hour, and the same evening
+carried it to every screen I own and to anyone with a browser. All of it is
+in this repo, and the home-built version is still the safety net.
 
 ---
 
@@ -527,7 +617,7 @@ python3 -m mirage.preview --scene NAME --palette NAME --size WxH --frames N --ou
 
 ```
 install-wallpaper.sh   installs the GNOME Shell extension
-gnome-extension/       extension that runs Aether (or Mirage) as the desktop wallpaper
+gnome-extension/       extension that runs Aether (or Mirage) as the desktop wallpaper, plus the top bar menu
 aether/                GPU renderer
   app.py               GTK 4 GLArea front end, frame pacing, wallpaper signals, battery
   engine.py            scene scheduling, noise dissolves, bloom, ACES tone map, auto-exposure
@@ -539,6 +629,7 @@ aether/                GPU renderer
   scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
 web/aether-bg.js       WebGL2 port for web pages and the Windows and macOS hosts (16 scenes)
 web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
+web/aether.html        interactive full-screen page: scenes, speed, zoom, snapshots
 windows/               native Windows host: WebView2 behind the desktop icons (C#, .NET 8)
 macos/                 native macOS host: WKWebView at the desktop window level (Swift)
 mirage/                CPU renderer

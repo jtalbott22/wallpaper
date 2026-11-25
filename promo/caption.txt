@@ -1,0 +1,8 @@
+At 8:21 pm this live wallpaper only ran on Linux. By 11:07 pm it ran on Linux, Windows, macOS and in any browser 🤯
+
+Aether is 10 GPU simulations (galaxies, silk, particle life, reaction-diffusion…) that slowly dissolve into each other and never repeat. It started on a model running at home on my own hardware, then Claude Code took it further. The trick to going cross-platform in one evening: port the engine to WebGL2 once, then give each OS a thin native host. Three Claude Code sessions on three machines, side by side.
+
+Free and open source. Try it in your browser: joshuaallentalbott.com/aether.html (link in bio)
+Code: github.com/jtalbott22/wallpaper
+
+#ai #claudecode #generativeart #creativecoding #webgl #livewallpaper #opensource #linux #macos #windows #shaders #indiedev #buildinpublic
