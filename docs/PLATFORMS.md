@@ -27,9 +27,10 @@ hosts, so both platforms use that page and only need a thin native wrapper.
   Physarum and Attractor need `EXT_color_buffer_float`. Without it, the page
   shows only Nebula and Julia.
 
-Runs in WebView2 on Windows 11 (the native host in `windows/`, with
-`EXT_color_buffer_float`, so all five scenes) and in headless Chromium on
-Linux. It has not yet run in WKWebView.
+Runs in WebView2 on Windows 11 (the native host in `windows/`) and in
+WKWebView on macOS 26 (the native host in `macos/`), both with
+`EXT_color_buffer_float`, so all five scenes, and in headless Chromium on
+Linux.
 
 ## Try it now, no code
 
@@ -71,7 +72,8 @@ built from:
 
 ## Native wrapper: macOS
 
-Brief for a Claude Code session on the Mac:
+**Done:** see [`macos/README.md`](../macos/README.md). The brief it was
+built from:
 
 > In this repository (pull first), add a native macOS wallpaper host under
 > `macos/` that shows `web/wallpaper.html` as the desktop background. Don't
