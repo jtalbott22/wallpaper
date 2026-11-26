@@ -1,7 +1,9 @@
 // Aether Live Wallpaper — GNOME Shell extension.
 //
-// Launches `python3 -m aether --wallpaper` (or the older `mirage` CPU renderer)
-// as a Wayland client the shell owns, then turns its window into a
+// Launches a renderer as a Wayland client the shell owns: by default the web
+// engine (`python3 -m aether.webhost`, web/wallpaper.html in WebKitGTK, the
+// same page the macOS and Windows apps show), or the native GPU renderer
+// (`python3 -m aether`), or the older Mirage CPU renderer. It turns its window into a
 // desktop-layer window: stacked below everything
 // (including the Desktop Icons window), on every workspace, hidden from the
 // dock / Alt-Tab / Overview, and sized to the primary monitor.
@@ -11,8 +13,8 @@
 // afterwards, and restarts it if it crashes.
 //
 // A top bar menu (the same ring-and-swirl icon as the macOS menu bar item)
-// sets brightness, picks or skips scenes, pauses, and opens the interactive
-// web page. Settings live in ~/.config/aether/wallpaper.json, and the
+// mirrors the macOS menu: what's playing, brightness, pause, scene, quality,
+// the math card, plus a renderer choice and the interactive web page. Settings live in ~/.config/aether/wallpaper.json, and the
 // renderer re-reads them on SIGHUP.
 //
 // The window-handling technique mirrors Ubuntu's Desktop Icons (DING)
@@ -35,10 +37,28 @@ const SIGUSR1 = 10;
 const SIGUSR2 = 12;
 const SIGTERM = 15;
 
-// names as `python3 -m aether --list` prints them
-const SCENES = ['Nebula', 'Julia', 'Reaction', 'Physarum', 'Attractor',
+// Scene names as the menu shows them. The native renderer has the first ten
+// (as `python3 -m aether --list` prints them); the web engine has all sixteen.
+const NATIVE_SCENES = ['Nebula', 'Julia', 'Reaction', 'Physarum', 'Attractor',
     'Silk', 'Chaos', 'Galaxy', 'Ink', 'Particle Life'];
+const WEB_SCENES = [...NATIVE_SCENES, 'Cymatics', 'Turing', 'Free Energy', 'Cosmos', 'Liquid', 'Mandelbulb'];
 const LEVEL_MIN = 0.05, LEVEL_MAX = 1.5;
+
+// renderers, best first; a renderer that keeps exiting falls back to the next
+const ENGINES = {
+    web: {label: 'Web Engine (all 16 scenes)', argv: ['python3', '-m', 'aether.webhost', '--wallpaper']},
+    aether: {label: 'Native GPU (10 scenes)', argv: ['python3', '-m', 'aether', '--wallpaper']},
+    mirage: {label: 'Mirage (CPU)', argv: ['python3', '-m', 'mirage', '--wallpaper']},
+};
+const ENGINE_ORDER = ['web', 'aether', 'mirage'];
+
+// the web engine's quality presets, as on macOS and Windows
+const QUALITIES = [
+    ['saver', 'Battery Saver'],
+    ['balanced', 'Balanced'],
+    ['high', 'High (60 fps, ray marching)'],
+    ['max', 'Maximum (60 fps, full resolution)'],
+];
 
 const AetherIndicator = GObject.registerClass(
 class AetherIndicator extends PanelMenu.Button {
@@ -73,17 +93,36 @@ class AetherIndicator extends PanelMenu.Button {
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         this._pauseItem = menu.addAction('Pause', () => this._ext._togglePause());
+
         this._sceneMenu = new PopupMenu.PopupSubMenuMenuItem('Scene');
         this._sceneItems = new Map();
-        const all = this._sceneMenu.menu.addAction('All scenes, in turn', () => this._ext._setScene(null));
-        this._sceneItems.set(null, all);
+        this._sceneItems.set(null, this._sceneMenu.menu.addAction('All scenes, in turn', () => this._ext._setScene(null)));
         this._sceneMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        for (const name of SCENES)
+        for (const name of WEB_SCENES)
             this._sceneItems.set(name, this._sceneMenu.menu.addAction(name, () => this._ext._setScene(name)));
         menu.addMenuItem(this._sceneMenu);
         this._nextItem = menu.addAction('Next Scene', () => this._ext._nextScene());
+
+        this._qualityMenu = new PopupMenu.PopupSubMenuMenuItem('Quality');
+        this._qualityItems = new Map();
+        for (const [key, label] of QUALITIES)
+            this._qualityItems.set(key, this._qualityMenu.menu.addAction(label, () => this._ext._setQuality(key)));
+        this._qualityMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._qualityMenu.menu.addMenuItem(new PopupMenu.PopupMenuItem('Resolution adapts per scene to keep motion smooth', {reactive: false}));
+        menu.addMenuItem(this._qualityMenu);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        this._mathItem = menu.addAction('Show the Math', () => this._ext._showMath());
+        this._mathAuto = new PopupMenu.PopupSwitchMenuItem('Show the Math When a Scene Starts', true);
+        this._mathAuto.connect('toggled', (_i, on) => this._ext._setMathOnStart(on));
+        menu.addMenuItem(this._mathAuto);
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._engineMenu = new PopupMenu.PopupSubMenuMenuItem('Renderer');
+        this._engineItems = new Map();
+        for (const key of ENGINE_ORDER)
+            this._engineItems.set(key, this._engineMenu.menu.addAction(ENGINES[key].label, () => this._ext._setEngine(key)));
+        menu.addMenuItem(this._engineMenu);
         menu.addAction('Open Aether in Browser', () => this._ext._openPage());
         menu.addAction('Restart Wallpaper', () => this._ext._restart());
 
@@ -95,11 +134,11 @@ class AetherIndicator extends PanelMenu.Button {
     }
 
     sync() {
-        const ext = this._ext, st = ext._settings;
-        const live = ext._engine === 'aether';
+        const ext = this._ext, st = ext._settings, engine = ext._engine;
+        const live = engine !== 'mirage', web = engine === 'web';
         this._status.label.text = ext._statusText();
         const pct = Math.round(st.brightness * 100);
-        this._brightLabel.label.text = live ? `Brightness  ${pct}%` : 'Brightness (Aether only)';
+        this._brightLabel.label.text = live ? `Brightness  ${pct}%` : 'Brightness (not in Mirage)';
         const v = (st.brightness - LEVEL_MIN) / (LEVEL_MAX - LEVEL_MIN);
         if (Math.abs(this._slider.value - v) > 0.02) {
             this._syncing = true;
@@ -108,13 +147,28 @@ class AetherIndicator extends PanelMenu.Button {
         }
         this._slider.reactive = live;
         this._pauseItem.label.text = st.paused ? 'Resume' : 'Pause';
-        this._sceneMenu.label.text = `Scene: ${st.scene ?? 'All, in turn'}`;
+
+        const scene = st.scene && (web || NATIVE_SCENES.includes(st.scene)) ? st.scene : null;
+        this._sceneMenu.label.text = `Scene: ${scene ?? 'All, in turn'}`;
         for (const [name, item] of this._sceneItems) {
-            item.setOrnament(name === (st.scene ?? null)
-                ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+            item.visible = name === null || web || NATIVE_SCENES.includes(name);
+            item.setOrnament(name === scene ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
         }
         this._sceneMenu.setSensitive(live);
         this._nextItem.setSensitive(live);
+
+        const q = QUALITIES.find(([k]) => k === st.quality) ?? QUALITIES[1];
+        this._qualityMenu.label.text = `Quality: ${q[1].replace(/ \(.*/, '')}`;
+        for (const [key, item] of this._qualityItems)
+            item.setOrnament(key === st.quality ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+        this._qualityMenu.visible = web;
+        this._mathItem.visible = web;
+        this._mathAuto.visible = web;
+        this._mathAuto.setToggleState(st.mathOnStart);
+
+        this._engineMenu.label.text = `Renderer: ${ENGINES[engine].label.replace(/ \(.*/, '')}`;
+        for (const [key, item] of this._engineItems)
+            item.setOrnament(key === engine ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
         this._icon.opacity = ext._paused || !ext._proc ? 128 : 255;
     }
 });
@@ -218,18 +272,22 @@ export default class AetherWallpaperExtension extends Extension {
         return null;
     }
 
-    // Which renderer to run: 'aether' (GPU, default) or 'mirage' (CPU).
+    // Which renderer to run: 'web' (the web engine, as on macOS and Windows;
+    // default), 'aether' (native GPU) or 'mirage' (CPU). A choice from the
+    // menu wins over the installer's `engine` file.
     _readEngine() {
+        if (ENGINES[this._settings?.engine])
+            return this._settings.engine;
         try {
             const file = Gio.File.new_for_path(GLib.build_filenamev([this.path, 'engine']));
             const [, bytes] = file.load_contents(null);
             const name = new TextDecoder().decode(bytes).trim();
-            if (['aether', 'mirage'].includes(name))
+            if (ENGINES[name])
                 return name;
         } catch (e) {
             // no file: use the default
         }
-        return 'aether';
+        return 'web';
     }
 
     // ---- settings + top bar menu -------------------------------------------
@@ -238,17 +296,25 @@ export default class AetherWallpaperExtension extends Extension {
     }
 
     _loadSettings() {
-        const st = {brightness: 1, scene: null, paused: false, next: 0};
+        const st = {brightness: 1, scene: null, paused: false, next: 0,
+            quality: 'balanced', mathOnStart: true, showMath: 0, engine: null};
         try {
             const [, bytes] = this._settingsFile().load_contents(null);
             const d = JSON.parse(new TextDecoder().decode(bytes));
             if (Number.isFinite(d.brightness))
                 st.brightness = Math.min(LEVEL_MAX, Math.max(LEVEL_MIN, d.brightness));
-            if (SCENES.includes(d.scene))
+            if (WEB_SCENES.includes(d.scene))
                 st.scene = d.scene;
             st.paused = !!d.paused;
             if (Number.isInteger(d.next))
                 st.next = d.next;
+            if (QUALITIES.some(([k]) => k === d.quality))
+                st.quality = d.quality;
+            st.mathOnStart = d.mathOnStart !== false;
+            if (Number.isInteger(d.showMath))
+                st.showMath = d.showMath;
+            if (ENGINES[d.engine])
+                st.engine = d.engine;
         } catch (e) {
             // no file yet: defaults
         }
@@ -275,7 +341,7 @@ export default class AetherWallpaperExtension extends Extension {
         this._saveId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
             this._saveId = 0;
             this._writeSettings();
-            if (tellRenderer && this._engine === 'aether' && this._proc && this._window) {
+            if (tellRenderer && this._engine !== 'mirage' && this._proc && this._window) {
                 try {
                     this._proc.send_signal(SIGHUP);
                 } catch (e) {
@@ -306,6 +372,33 @@ export default class AetherWallpaperExtension extends Extension {
         this._saveSettings();
     }
 
+    _setQuality(key) {
+        if (key === this._settings.quality)
+            return;
+        this._settings.quality = key;
+        this._saveSettings();
+        this._indicator?.sync();
+    }
+
+    _showMath() {
+        this._settings.showMath = (this._settings.showMath + 1) % 1000000;
+        this._saveSettings();
+    }
+
+    _setMathOnStart(on) {
+        this._settings.mathOnStart = on;
+        this._saveSettings();
+    }
+
+    _setEngine(key) {
+        if (key === this._engine && this._settings.engine === key)
+            return;
+        this._settings.engine = key;
+        this._saveSettings(false);
+        console.log(`${this.uuid}: renderer set to ${key} from the menu`);
+        this._restart();
+    }
+
     _togglePause() {
         this._settings.paused = !this._settings.paused;
         console.log(`${this.uuid}: ${this._settings.paused ? 'paused' : 'resumed'} from the menu`);
@@ -325,7 +418,7 @@ export default class AetherWallpaperExtension extends Extension {
 
     _restart() {
         this._crashTimes = [];
-        this._engine = this._readEngine();   // undo a fallback to Mirage
+        this._engine = this._readEngine();   // undo a fallback
         if (this._proc) {
             // the exit handler relaunches it
             try {
@@ -348,7 +441,8 @@ export default class AetherWallpaperExtension extends Extension {
             return `Paused${engine}`;
         if (this._paused)
             return `Paused while a window covers the screen${engine}`;
-        return `Running${engine}`;
+        // the web engine says what it's showing, as the macOS menu does
+        return this._sceneName ? `Running · ${this._sceneName}` : `Running${engine}`;
     }
 
     _syncIndicator() {
@@ -380,7 +474,8 @@ export default class AetherWallpaperExtension extends Extension {
             flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
         });
         launcher.set_cwd(this._repoDir);
-        const argv = ['python3', '-m', this._engine, '--wallpaper'];
+        const argv = ENGINES[this._engine].argv;
+        this._sceneName = null;
         launcher.setenv('GDK_BACKEND', 'wayland', true);
 
         try {
@@ -420,6 +515,10 @@ export default class AetherWallpaperExtension extends Extension {
                 if (line === null)
                     return;
                 console.log(`wallpaper (${this._engine}): ${line}`);
+                if (line.startsWith('scene: ')) {
+                    this._sceneName = line.slice(7).trim();
+                    this._indicator?.sync();
+                }
             } catch (e) {
                 if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
                     console.warn(`${this.uuid}: ${e.message}`);
@@ -433,10 +532,13 @@ export default class AetherWallpaperExtension extends Extension {
         const now = GLib.get_monotonic_time() / 1e6;
         this._crashTimes = this._crashTimes.filter(t => now - t < CRASH_WINDOW_S);
         this._crashTimes.push(now);
-        if (this._crashTimes.length > MAX_CRASHES) {
-            if (this._engine === 'aether') {
-                console.error(`${this.uuid}: Aether keeps exiting; falling back to the Mirage CPU renderer.`);
-                this._engine = 'mirage';
+        // the web engine falls back sooner (no WebKitGTK, say) so the desktop isn't left empty
+        const limit = this._engine === 'web' ? 3 : MAX_CRASHES;
+        if (this._crashTimes.length > limit) {
+            const next = ENGINE_ORDER[ENGINE_ORDER.indexOf(this._engine) + 1];
+            if (next) {
+                console.error(`${this.uuid}: ${ENGINES[this._engine].label} keeps exiting; falling back to ${ENGINES[next].label}.`);
+                this._engine = next;
                 this._crashTimes = [];
             } else {
                 console.error(`${this.uuid}: Mirage keeps exiting; giving up until the extension is re-enabled.`);

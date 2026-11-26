@@ -2,8 +2,13 @@
 # Install (or update) the Aether Live Wallpaper GNOME Shell extension.
 # (The extension ID still says "mirage" so existing installs keep working.)
 #
-#   ./install-wallpaper.sh                   install + enable (GPU renderer, Aether)
+#   ./install-wallpaper.sh                   install + enable (the web engine, as on macOS and Windows)
+#   ./install-wallpaper.sh --engine aether   use the native GPU renderer (10 scenes) instead
 #   ./install-wallpaper.sh --engine mirage   use the older CPU renderer instead
+#
+# The web engine needs WebKitGTK 4.1 (sudo apt install gir1.2-webkit2-4.1);
+# without it the extension falls back to the native renderer on its own.
+# The top bar menu can switch renderers at any time.
 #   ./install-wallpaper.sh --uninstall
 #
 # On Wayland, GNOME Shell only discovers a newly installed extension at
@@ -21,11 +26,11 @@ if [ "${1:-}" = "--uninstall" ]; then
     exit 0
 fi
 
-ENGINE=aether
+ENGINE=web
 if [ "${1:-}" = "--engine" ]; then
-    ENGINE="${2:-aether}"
+    ENGINE="${2:-web}"
 fi
-case "$ENGINE" in aether|mirage) ;; *) echo "unknown engine: $ENGINE (use aether or mirage)"; exit 1 ;; esac
+case "$ENGINE" in web|aether|mirage) ;; *) echo "unknown engine: $ENGINE (use web, aether or mirage)"; exit 1 ;; esac
 
 mkdir -p "$DEST"
 cp "$REPO/gnome-extension/metadata.json" "$REPO/gnome-extension/extension.js" "$DEST/"
@@ -38,6 +43,7 @@ echo "Installed to $DEST ($ENGINE renderer, repository $REPO)"
 if gnome-extensions info "$UUID" >/dev/null 2>&1; then
     # Shell already knows about it: toggle to reload the new code.
     gnome-extensions disable "$UUID" 2>/dev/null || true
+    sleep 1   # enabling straight after disabling can leave it inactive
     gnome-extensions enable "$UUID"
     echo "Enabled. On Wayland, extension.js changes need a log out/in; a renderer switch applies the next time it restarts (also at login)."
 else

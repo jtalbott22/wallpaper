@@ -133,25 +133,41 @@ extension at login. After that, Aether starts with your session.
 
 What the extension does:
 
-- launches `python3 -m aether --wallpaper` at login, restarts it if it exits,
-  and falls back to the older CPU renderer, [Mirage](#mirage-the-original-cpu-renderer),
-  if Aether keeps failing (for example, no OpenGL 4.3)
+- runs the same **web engine** the macOS and Windows apps show: all sixteen
+  scenes, the quality presets and the math cards, via `python3 -m aether.webhost`
+  ([`web/wallpaper.html`](web/wallpaper.html) in a WebKitGTK view). It needs
+  WebKitGTK 4.1, which Ubuntu installs with the desktop (`gir1.2-webkit2-4.1`).
+  You can switch to the native GPU renderer (`python3 -m aether`, the original
+  ten scenes on OpenGL 4.3 compute shaders) or the older CPU renderer,
+  [Mirage](#mirage-the-original-cpu-renderer), from the menu
+- restarts the renderer if it exits, and falls back from the web engine to the
+  native renderer to Mirage if one keeps failing
 - puts the window in the desktop layer, below Desktop Icons and every other
   window, on all workspaces, hidden from the dock, Alt-Tab and Overview
 - sizes it to the primary monitor
 - **pauses rendering** while a maximized or fullscreen window covers the
   screen, and while the screen is locked, so it costs nothing while you work
-- adds an **Aether menu to the top bar**, with the same ring-and-swirl icon as
-  the macOS menu bar item:
+- adds an **Aether menu to the top bar** that matches the macOS menu bar item,
+  icon included:
+  - what's playing (for example "Running · Free Energy")
   - a brightness slider (5–150%)
   - pause and resume
-  - pick one scene or let it move through all of them, and skip to the next scene
+  - **Scene**: all of them in turn, or stay on one; **Next Scene**
+  - **Quality**: Battery Saver, Balanced (default), High or Maximum. Each
+    scene's resolution adapts to keep motion smooth; High and Maximum run at
+    60 fps and add ray marching and the Mandelbulb
+  - **Show the Math**, and **Show the Math When a Scene Starts** (on by default)
+  - **Renderer**: Web Engine, Native GPU or Mirage
   - open the [interactive web version](#on-the-web) in your browser
   - restart the wallpaper
 
   Your choices are saved in `~/.config/aether/wallpaper.json`, and the renderer
   re-reads them on `SIGHUP`, so changes apply without a restart. After updating
-  from an older version, log out and back in once to get the menu.
+  from an older version, run `./install-wallpaper.sh` again and log out and
+  back in once to get the new menu.
+
+To try the web engine in a normal window: `python3 -m aether.webhost`
+(add `--quality high` or `--scene Cosmos`).
 
 **Limits:** it covers the primary monitor only, and it doesn't react to the
 mouse (the desktop window doesn't receive pointer events).
@@ -620,6 +636,7 @@ install-wallpaper.sh   installs the GNOME Shell extension
 gnome-extension/       extension that runs Aether (or Mirage) as the desktop wallpaper, plus the top bar menu
 aether/                GPU renderer
   app.py               GTK 4 GLArea front end, frame pacing, wallpaper signals, battery
+  webhost.py           Linux host for the web engine: wallpaper.html in WebKitGTK (the default wallpaper)
   engine.py            scene scheduling, noise dissolves, bloom, ACES tone map, auto-exposure
   gl.py                ctypes OpenGL 4.3 bindings and Program/Texture/Buffer helpers
   glsl.py              shared GLSL: hashes, simplex and curl noise, fbm, palette lookup
@@ -627,9 +644,9 @@ aether/                GPU renderer
   headless.py          surfaceless EGL context for previews and benchmarks
   preview.py           --preview, --sheet and --bench
   scenes/              one file per scene, plus base.py (Scene, Drift, camera helpers)
-web/aether-bg.js       WebGL2 port for web pages and the Windows and macOS hosts (16 scenes)
-web/wallpaper.html     full-screen page for Windows and macOS wallpaper hosts
-web/aether.html        interactive full-screen page: scenes, speed, zoom, snapshots
+web/aether-bg.js       WebGL2 engine for web pages and the Linux, Windows and macOS hosts (16 scenes)
+web/wallpaper.html     full-screen page the Linux, Windows and macOS wallpaper hosts show
+web/aether.html        interactive full-screen page: scenes, speed, zoom, math, snapshots
 windows/               native Windows host: WebView2 behind the desktop icons (C#, .NET 8)
 macos/                 native macOS host: WKWebView at the desktop window level (Swift)
 mirage/                CPU renderer

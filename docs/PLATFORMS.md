@@ -8,6 +8,9 @@ and no easy GTK 4.
 The web port does run everywhere. [`web/wallpaper.html`](../web/wallpaper.html)
 is a full-screen, full-strength version of it made for desktop wallpaper
 hosts, so both platforms use that page and only need a thin native wrapper.
+Linux now does the same by default: `aether/webhost.py` shows the page in
+WebKitGTK, and the GNOME extension puts it behind the desktop, so all three
+platforms get the same scenes, quality presets and math cards.
 
 ## The shared page: `web/wallpaper.html`
 
@@ -40,10 +43,10 @@ hosts, so both platforms use that page and only need a thin native wrapper.
   `aether-show-math` shows it again; `?math=0` or `aether-math-auto` with
   `false` turns the card off on scene start.
 
-Runs in WebView2 on Windows 11 (the native host in `windows/`) and in
-WKWebView on macOS 26 (the native host in `macos/`), both with
-`EXT_color_buffer_float`, so every scene, and in headless Chromium on
-Linux.
+Runs in WebView2 on Windows 11 (the native host in `windows/`), in
+WKWebView on macOS 26 (the native host in `macos/`) and in WebKitGTK 4.1 on
+Ubuntu (`aether/webhost.py`, run by the GNOME extension), all with
+`EXT_color_buffer_float`, so every scene, and in headless Chromium on Linux.
 
 ## Try it now, no code
 

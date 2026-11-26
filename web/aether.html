@@ -95,6 +95,21 @@
   .panel p{ margin:12px 0 0; font-size:13px; color:var(--ink-2); line-height:1.45; }
   .panel a{ color:var(--accent); }
 
+  .math{
+    position:fixed; left:16px; top:calc(max(16px, env(safe-area-inset-top)) + 56px);
+    width:min(500px, calc(100vw - 32px)); padding:16px 20px 14px;
+    background:var(--glass); border:1px solid var(--line); border-radius:16px;
+    -webkit-backdrop-filter:blur(18px) saturate(1.3); backdrop-filter:blur(18px) saturate(1.3);
+    box-shadow:0 12px 40px rgba(0,0,0,.45);
+  }
+  .math[hidden]{ display:none; }
+  .math h2{ margin:0 0 4px; font-size:16px; font-weight:650; }
+  .math .about{ margin:0 0 12px; font-size:13.5px; line-height:1.5; color:var(--ink-2); }
+  .math .eq{ font:19px/1.6 "STIX Two Math", "STIX Two Text", "Cambria Math", "Latin Modern Math", "Times New Roman", serif; }
+  .math .eq i{ font-style:italic; }
+  .math .eq sup, .math .eq sub{ font-size:0.7em; line-height:0; }
+  .math .credit{ margin-top:10px; font-size:12px; color:var(--ink-2); }
+  @media (max-width:640px){ .math{ top:auto; bottom:calc(max(18px, env(safe-area-inset-bottom)) + 66px); } }
   .toast{
     position:fixed; left:50%; top:42%; transform:translate(-50%, -50%); pointer-events:none;
     font-size:clamp(28px, 5vw, 54px); font-weight:300; letter-spacing:.08em; color:#fff;
@@ -113,7 +128,7 @@
 </head>
 <body>
 <canvas id="aether-bg" aria-label="Aether, a live generative animation" role="img"
-  data-strength="1" data-pixels="1400000" data-parallax="0" data-scenes="all"
+  data-strength="1" data-pixels="1400000" data-parallax="0" data-scenes="all" data-quality="balanced"
   data-level-key="aether-page-level" data-reduced-motion="pause"></canvas>
 
 <div class="nogl" id="nogl" hidden>
@@ -158,6 +173,9 @@
     <output id="levelOut" for="level">100%</output>
   </label>
   <span class="sep hide-sm"></span>
+  <button id="mathBtn" aria-pressed="false" aria-label="Show the math" title="Show the math (M)">
+    <svg viewBox="0 0 24 24"><path d="M17 5H7l5.5 7L7 19h10"/></svg>
+  </button>
   <button id="shotBtn" aria-label="Save this frame" title="Save this frame (C)">
     <svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.5"/></svg>
   </button>
@@ -189,12 +207,20 @@
     <dt><kbd>R</kbd>, double-click</dt><dd>Reset the zoom</dd>
     <dt><kbd>F</kbd></dt><dd>Full screen</dd>
     <dt><kbd>C</kbd></dt><dd>Save this frame as a PNG</dd>
+    <dt><kbd>M</kbd></dt><dd>Show the math behind this scene</dd>
     <dt><kbd>H</kbd></dt><dd>Hide or show the controls</dd>
   </dl>
   <h2 class="story">The name</h2>
   <p><strong>Aether</strong> <span lang="grc">(Greek <em>aithēr</em>, “shining upper air”)</span>: in Greek myth, the pure, glowing air above the clouds that the gods breathed, Aristotle’s fifth element; in 19th-century physics, an invisible medium once thought to fill all of space and carry light. Here, it’s light that fills the space behind your windows.</p>
   <h2 class="story">The story</h2>
   <p><strong>Linux, Windows, macOS and your browser, in one evening.</strong> Aether started as a Linux-only wallpaper. Between 8:21 and 11:07 pm one night it became a WebGL2 engine with native hosts for Windows and macOS, built side by side by three Claude Code sessions on three machines. <a href="https://github.com/jtalbott22/wallpaper#act-3-everywhere-in-one-evening" target="_blank" rel="noopener">Read how</a> or <a href="https://github.com/jtalbott22/wallpaper" target="_blank" rel="noopener">get it as your wallpaper</a>.</p>
+</div>
+
+<div class="math ui" id="math" role="status" aria-live="polite" hidden>
+  <h2></h2>
+  <p class="about"></p>
+  <div class="eq"></div>
+  <div class="credit"></div>
 </div>
 
 <div class="toast" id="toast" aria-hidden="true"></div>
@@ -227,7 +253,7 @@
   scenes.forEach(function (s, i) {
     var b = document.createElement('button');
     b.dataset.key = s.key;
-    b.innerHTML = '<span></span><kbd>' + ((i + 1) % 10) + '</kbd>';
+    b.innerHTML = '<span></span>' + (i < 10 ? '<kbd>' + ((i + 1) % 10) + '</kbd>' : '');
     b.firstChild.textContent = s.name;
     b.addEventListener('click', function () { pick(s.key); });
     grid.appendChild(b);
@@ -378,7 +404,36 @@
 
   // ---- idle: hide the controls and cursor after a few quiet seconds
   var idleT = 0;
-  function anyPanel() { return !$('scenePanel').hidden || !$('helpPanel').hidden; }
+  function anyPanel() { return !$('scenePanel').hidden || !$('helpPanel').hidden || !$('math').hidden; }
+
+  // ---- the math behind the scene (aether-bg.js sends it with every scene)
+  var mathOn = false, lastInfo = null;
+  function fillMath(info) {
+    var c = $('math');
+    c.querySelector('h2').textContent = info.name;
+    c.querySelector('.about').textContent = info.about || '';
+    // the equations come from aether-bg.js itself (a fixed table, no outside input)
+    c.querySelector('.eq').innerHTML = info.math || '';
+    c.querySelector('.credit').innerHTML = info.credit || '';
+  }
+  function syncMath() {
+    $('mathBtn').setAttribute('aria-pressed', mathOn ? 'true' : 'false');
+    $('math').hidden = !(mathOn && lastInfo && lastInfo.math);
+  }
+  window.addEventListener('aether-scene', function (e) {
+    var info = e.detail || {};
+    if (!info.math) return;
+    lastInfo = info;
+    if (mathOn) fillMath(info);
+    syncMath();
+  });
+  function toggleMath() {
+    mathOn = !mathOn;
+    if (mathOn) window.dispatchEvent(new CustomEvent('aether-show-math'));
+    if (mathOn && lastInfo) fillMath(lastInfo);
+    syncMath();
+  }
+  $('mathBtn').addEventListener('click', toggleMath);
   function wake() {
     if (hideUI) return;
     document.body.classList.remove('idle');
@@ -454,12 +509,13 @@
     else if (k === ']') { setLevel(+range.value + 10); flash(range.value + '%'); }
     else if (k === '[') { setLevel(+range.value - 10); flash(range.value + '%'); }
     else if (k === '?' || k === '/') panel($('helpBtn'), $('helpPanel'));
+    else if (k === 'm' || k === 'M') toggleMath();
     else if (k === 'h' || k === 'H') {
       hideUI = !hideUI;
       document.body.classList.toggle('idle', hideUI);
       if (!hideUI) wake();
     }
-    else if (k === 'Escape' && anyPanel()) { closePanels(); panel($('helpBtn'), $('helpPanel'), false); }
+    else if (k === 'Escape' && anyPanel()) { closePanels(); panel($('helpBtn'), $('helpPanel'), false); mathOn = false; syncMath(); }
     else handled = false;
     if (handled) e.preventDefault();
   });
