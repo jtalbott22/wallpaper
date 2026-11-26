@@ -112,6 +112,7 @@ class Engine:
         self.ctx = SceneContext(self.log)
         self.quality = quality
         self.forced_scene = scene
+        self.skipped = set()      # lower-case names left out of the rotation
         self.durations = durations  # (lo, hi) override for testing
         self.bloom_strength = bloom
         self.exposure = exposure
@@ -175,7 +176,8 @@ class Engine:
                     return cls
             raise SystemExit(f'unknown scene {self.forced_scene!r}; try --list')
         recent = set(self.history[-max(1, min(4, len(REGISTRY) - 2)):])
-        options = [c for c in REGISTRY if c.name not in recent] or list(REGISTRY)
+        allowed = [c for c in REGISTRY if c.name.lower() not in self.skipped] or list(REGISTRY)
+        options = [c for c in allowed if c.name not in recent] or allowed
         weights = [c.weight for c in options]
         return self.rng.choices(options, weights)[0]
 

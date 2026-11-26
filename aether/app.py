@@ -130,6 +130,7 @@ class AetherApp:
             self.engine = Engine(vw, vh, quality=quality, seed=self.args.seed,
                                  scene=self.args.scene, log=self.log)
             self.engine.level = self.engine._level = self.level
+            self.engine.skipped = getattr(self, 'skipped', set())
         elif (vw, vh) != (self.engine.out_w, self.engine.out_h) or abs(quality - self.engine.quality) > 1e-3:
             self.engine.resize(vw, vh, quality)
         try:
@@ -181,6 +182,8 @@ class AetherApp:
             self.level = 1.0
         scene = d.get('scene') or None
         nxt = d.get('next', 0)
+        skip = d.get('skip')
+        self.skipped = {str(n).lower() for n in skip} if isinstance(skip, list) else set()
         if first:
             if scene and not self.args.scene:
                 from .scenes import REGISTRY
@@ -192,6 +195,7 @@ class AetherApp:
         eng = self.engine
         if eng is not None:
             eng.level = self.level
+            eng.skipped = self.skipped
             if (scene or None) != (eng.forced_scene or None):
                 from .scenes import REGISTRY
                 if scene is None or any(c.name.lower() == str(scene).lower() for c in REGISTRY):

@@ -81,9 +81,18 @@
   .panel[hidden]{ display:none; }
   .panel h2{ margin:0 0 10px; font-size:13px; font-weight:600; color:var(--ink-2); text-transform:uppercase; letter-spacing:.08em; }
   .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:6px; }
-  .grid button{ justify-content:flex-start; background:var(--glass-2); height:42px; }
-  .grid button kbd{ margin-left:auto; }
-  .grid button[aria-current="true"]{ background:rgba(159,212,255,.2); color:var(--accent); }
+  .cell{ display:flex; align-items:stretch; background:var(--glass-2); border-radius:11px; }
+  .cell .pick{ flex:1; justify-content:flex-start; height:42px; min-width:0; background:transparent; }
+  .cell .pick span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cell .pick kbd{ margin-left:auto; }
+  .cell .rot{ height:42px; min-width:38px; padding:0 8px; color:var(--ink-2); }
+  .cell .rot svg{ width:18px; height:18px; }
+  .cell .rot[aria-pressed]{ background:transparent; color:var(--ink-2); }
+  .cell .rot:hover{ background:var(--glass-2); color:var(--ink); }
+  .cell.current{ background:rgba(159,212,255,.2); }
+  .cell.current .pick{ color:var(--accent); }
+  .cell.off .pick span{ opacity:.45; text-decoration:line-through; text-decoration-color:rgba(238,241,244,.35); }
+  .rot-note{ margin-left:auto; align-self:center; font-size:13px; color:var(--ink-2); }
   .row{ display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
   .row button{ background:var(--glass-2); }
   kbd{ font:12px ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--ink-2); border:1px solid var(--line); border-radius:5px; padding:1px 5px; }
@@ -189,8 +198,10 @@
   <div class="grid" id="grid"></div>
   <div class="row">
     <button id="viewReset" title="Reset zoom (R)">Reset zoom</button>
+    <button id="rotAll" hidden>Put all back</button>
+    <span class="rot-note" id="rotNote"></span>
   </div>
-  <p>Picking a scene keeps it on screen. Turn on <em>move through all scenes</em> to let Aether drift from one to the next again.</p>
+  <p>Picking a scene keeps it on screen. Turn on <em>move through all scenes</em> to let Aether drift from one to the next again. The eye beside each scene takes it out of the rotation (or puts it back); this device remembers your choice.</p>
 </div>
 
 <div class="panel ui" id="helpPanel" hidden>
@@ -248,16 +259,57 @@
   var scenes = A.scenes();
   var past = [], hideUI = false;
 
-  // ---- scene grid
+  // ---- scene grid: click a name to show it; the eye takes it in or out of the rotation
   var grid = $('grid');
+  var SKIP_KEY = 'aether-page-skip', skipped = [];
+  try { skipped = JSON.parse(localStorage.getItem(SKIP_KEY) || '[]') || []; } catch (e) { skipped = []; }
+  var EYE = '<svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M4 4l16 16M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.6M6.3 7.6A16.5 16.5 0 0 0 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
   scenes.forEach(function (s, i) {
+    var cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.key = s.key;
     var b = document.createElement('button');
-    b.dataset.key = s.key;
+    b.className = 'pick';
     b.innerHTML = '<span></span>' + (i < 10 ? '<kbd>' + ((i + 1) % 10) + '</kbd>' : '');
     b.firstChild.textContent = s.name;
+    b.title = 'Show ' + s.name;
     b.addEventListener('click', function () { pick(s.key); });
-    grid.appendChild(b);
+    var r = document.createElement('button');
+    r.className = 'rot';
+    r.addEventListener('click', function () { toggleRotation(s.key); });
+    cell.appendChild(b); cell.appendChild(r);
+    grid.appendChild(cell);
   });
+  function syncRotation() {
+    grid.querySelectorAll('.cell').forEach(function (c) {
+      var off = skipped.indexOf(c.dataset.key) >= 0, name = c.querySelector('.pick span').textContent;
+      c.classList.toggle('off', off);
+      var r = c.querySelector('.rot');
+      r.innerHTML = off ? EYE_OFF : EYE;
+      r.setAttribute('aria-pressed', off ? 'false' : 'true');
+      r.setAttribute('aria-label', name + ' in the rotation');
+      r.title = off ? 'Left out of the rotation: click to put it back' : 'In the rotation: click to leave it out';
+    });
+    var n = scenes.length - skipped.filter(function (k) { return scenes.some(function (s) { return s.key === k; }); }).length;
+    $('rotNote').textContent = n + ' of ' + scenes.length + ' in the rotation';
+    $('rotAll').hidden = !skipped.length;
+  }
+  $('rotAll').addEventListener('click', function () {
+    skipped = [];
+    try { localStorage.setItem(SKIP_KEY, '[]'); } catch (e) {}
+    A.skip(skipped);
+    syncRotation();
+  });
+  A.skip(skipped);
+  syncRotation();
+  function toggleRotation(key) {
+    var i = skipped.indexOf(key);
+    if (i >= 0) skipped.splice(i, 1); else skipped.push(key);
+    try { localStorage.setItem(SKIP_KEY, JSON.stringify(skipped)); } catch (e) {}
+    A.skip(skipped);
+    syncRotation();
+  }
 
   function setURL(key) {
     var u = new URL(location.href);
@@ -290,7 +342,10 @@
     if (!s) return;
     $('nowName').textContent = s.name;
     $('sceneName').textContent = s.name;
-    grid.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-current', b.dataset.key === s.key ? 'true' : 'false'); });
+    grid.querySelectorAll('.cell').forEach(function (c) {
+      c.classList.toggle('current', c.dataset.key === s.key);
+      c.querySelector('.pick').setAttribute('aria-current', c.dataset.key === s.key ? 'true' : 'false');
+    });
     var t = $('toast');
     t.innerHTML = '';
     t.appendChild(document.createTextNode(s.name));

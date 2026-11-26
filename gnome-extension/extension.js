@@ -101,6 +101,19 @@ class AetherIndicator extends PanelMenu.Button {
         for (const name of WEB_SCENES)
             this._sceneItems.set(name, this._sceneMenu.menu.addAction(name, () => this._ext._setScene(name)));
         menu.addMenuItem(this._sceneMenu);
+
+        // switch scenes you don't like out of the rotation
+        this._rotMenu = new PopupMenu.PopupSubMenuMenuItem('Scenes in Rotation');
+        this._rotItems = new Map();
+        for (const name of WEB_SCENES) {
+            const item = new PopupMenu.PopupSwitchMenuItem(name, true);
+            item.connect('toggled', (_i, on) => this._ext._setInRotation(name, on));
+            this._rotMenu.menu.addMenuItem(item);
+            this._rotItems.set(name, item);
+        }
+        this._rotMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._rotAll = this._rotMenu.menu.addAction('Put All Back', () => this._ext._resetRotation());
+        menu.addMenuItem(this._rotMenu);
         this._nextItem = menu.addAction('Next Scene', () => this._ext._nextScene());
 
         this._qualityMenu = new PopupMenu.PopupSubMenuMenuItem('Quality');
@@ -156,6 +169,16 @@ class AetherIndicator extends PanelMenu.Button {
         }
         this._sceneMenu.setSensitive(live);
         this._nextItem.setSensitive(live);
+
+        const shown = WEB_SCENES.filter(n => web || NATIVE_SCENES.includes(n));
+        const out = shown.filter(n => st.skip.includes(n)).length;
+        this._rotMenu.label.text = out ? `Scenes in Rotation: ${shown.length - out} of ${shown.length}` : 'Scenes in Rotation: all';
+        for (const [name, item] of this._rotItems) {
+            item.visible = shown.includes(name);
+            item.setToggleState(!st.skip.includes(name));
+        }
+        this._rotAll.visible = out > 0;
+        this._rotMenu.setSensitive(live);
 
         const q = QUALITIES.find(([k]) => k === st.quality) ?? QUALITIES[1];
         this._qualityMenu.label.text = `Quality: ${q[1].replace(/ \(.*/, '')}`;
@@ -297,7 +320,7 @@ export default class AetherWallpaperExtension extends Extension {
 
     _loadSettings() {
         const st = {brightness: 1, scene: null, paused: false, next: 0,
-            quality: 'balanced', mathOnStart: true, showMath: 0, engine: null};
+            quality: 'balanced', mathOnStart: true, showMath: 0, engine: null, skip: []};
         try {
             const [, bytes] = this._settingsFile().load_contents(null);
             const d = JSON.parse(new TextDecoder().decode(bytes));
@@ -315,6 +338,8 @@ export default class AetherWallpaperExtension extends Extension {
                 st.showMath = d.showMath;
             if (ENGINES[d.engine])
                 st.engine = d.engine;
+            if (Array.isArray(d.skip))
+                st.skip = d.skip.filter(n => WEB_SCENES.includes(n));
         } catch (e) {
             // no file yet: defaults
         }
@@ -370,6 +395,21 @@ export default class AetherWallpaperExtension extends Extension {
     _nextScene() {
         this._settings.next = (this._settings.next + 1) % 1000000;
         this._saveSettings();
+    }
+
+    _setInRotation(name, on) {
+        const skip = this._settings.skip.filter(n => n !== name);
+        if (!on)
+            skip.push(name);
+        this._settings.skip = skip;
+        this._saveSettings();
+        this._indicator?.sync();
+    }
+
+    _resetRotation() {
+        this._settings.skip = [];
+        this._saveSettings();
+        this._indicator?.sync();
     }
 
     _setQuality(key) {

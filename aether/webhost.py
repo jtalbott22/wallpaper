@@ -9,7 +9,8 @@ Signals, as for the native renderer:
   SIGUSR1  pause (the page fades out and stops drawing)
   SIGUSR2  resume
   SIGHUP   re-read ~/.config/aether/wallpaper.json (brightness, scene,
-           quality, math card, "next scene" and "show the math" requests)
+           quality, math card, scenes left out of the rotation, and "next
+           scene" and "show the math" requests)
 
 It prints `scene: <name>` whenever a scene starts, which the extension shows
 in its top bar menu.
@@ -91,6 +92,7 @@ def read_settings():
         'quality': d.get('quality') if d.get('quality') in QUALITIES else 'balanced',
         'math': d.get('mathOnStart', True) is not False,
         'next': d.get('next', 0),
+        'skip': sorted(KEYS[n] for n in d.get('skip', []) if n in KEYS) if isinstance(d.get('skip'), list) else [],
         'ask': d.get('showMath', 0),
     }
 
@@ -233,6 +235,8 @@ class WebHost:
             q['aether'] = self.s['scene']
         if not self.s['math']:
             q['math'] = '0'
+        if self.s['skip']:
+            q['skip'] = ','.join(self.s['skip'])
         return 'file://' + urllib.parse.quote(PAGE) + '?' + urllib.parse.urlencode(q)
 
     def load(self):
@@ -304,6 +308,8 @@ class WebHost:
             return GLib.SOURCE_CONTINUE
         if new['level'] != old['level'] and not self.paused:
             self.send('aether-level', f"{new['level']}")
+        if new['skip'] != old['skip']:
+            self.send('aether-skip', json.dumps(new['skip']))
         if new['math'] != old['math']:
             self.send('aether-math-auto', 'true' if new['math'] else 'false')
         if new['next'] != old['next']:

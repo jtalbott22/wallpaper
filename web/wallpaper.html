@@ -12,6 +12,8 @@
     ?quality=high      saver, balanced (default), high or max: resolution and frame
                        rate adapt per scene; high and max run at 60 fps and add ray marching
     ?math=0            don't show a scene's math when it starts (? still shows it)
+    ?skip=turing,bulb  leave these scenes out of the rotation (they can still be picked);
+                       an 'aether-skip' event with an array of keys changes it live
 
   Hosts can pause it by sending level 0 and resume with any other level:
     window.dispatchEvent(new CustomEvent('aether-level', { detail: 0 }))

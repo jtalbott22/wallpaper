@@ -158,6 +158,8 @@ What the extension does:
   - a brightness slider (5–150%)
   - pause and resume
   - **Scene**: all of them in turn, or stay on one; **Next Scene**
+  - **Scenes in Rotation**: a switch per scene, to leave out the ones you
+    don't like (you can still pick them by hand); **Put All Back** resets it
   - **Quality**: Battery Saver, Balanced (default), High or Maximum. Each
     scene's resolution adapts to keep motion smooth; High and Maximum run at
     60 fps and add ray marching and the Mandelbulb
@@ -457,14 +459,15 @@ turns parallax off.
 **Play with it in a browser**
 
 [`web/aether.html`](web/aether.html) is the full wallpaper experience in a tab, with
-controls: all ten scenes, full screen, pick or hold a scene, pause, change the
+controls: every scene, full screen, pick or hold a scene, leave scenes out of
+the rotation (the eye beside each one in the Scenes panel), pause, change the
 speed (¼× to 3×), zoom in where you point (scroll or pinch) and drag to look
 around, set the brightness, and save the current frame as a PNG. Press `?` on
 the page for the keyboard shortcuts. Try it on
 [joshuaallentalbott.com/aether.html](https://joshuaallentalbott.com/aether.html),
 open the file locally, or use **Open Aether in Browser** in the Linux top bar menu.
 
-Pages can drive the engine through `window.Aether`: `scenes()`, `scene()`,
+Pages can drive the engine through `window.Aether`: `scenes()`, `scene()`, `skip(keys)`,
 `show(key)`, `next()`, `hold(bool)`, `pause(bool)`, `speed(x)`, `zoomAt(factor, x, y)`,
 `pan(dx, dy)`, `resetView()` and `snapshot()`. It fires an `aether-scene` event
 on `window` whenever a new scene starts.

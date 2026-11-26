@@ -34,6 +34,9 @@ platforms get the same scenes, quality presets and math cards.
   Julia needs `EXT_color_buffer_float`; without it, the page shows only
   those two. `?aether=` takes nebula, julia, reaction, physarum, attractor,
   silk, chaos, galaxy, ink, life, cymatics, turing, soup, cosmos, liquid or bulb.
+- `?skip=turing,bulb` leaves scenes out of the rotation (they can still be
+  picked by hand); an `aether-skip` event whose detail is an array of keys
+  changes it without a reload. If every scene is skipped the list is ignored.
 - `?quality=saver|balanced|high|max` (default balanced): each scene's
   resolution adapts to keep frames on time, and the high presets run at
   60 fps with ray marching. The page also gets FXAA, bloom and a richer grade.

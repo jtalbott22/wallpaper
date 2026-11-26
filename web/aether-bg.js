@@ -2305,6 +2305,18 @@
   // ?aether=physarum shows only that scene (handy for screenshots); the keys
   // are nebula, julia, reaction, physarum, attractor, silk, chaos, galaxy, ink,
   // life, cymatics, turing, soup, cosmos, liquid
+  // scenes left out of the rotation: ?skip=turing,bulb, or an 'aether-skip'
+  // event (an array of keys, or a comma-separated string). Picking a skipped
+  // scene by hand still works; if every scene is skipped the list is ignored.
+  var SKIP = {};
+  function parseSkip(v) {
+    var out = {};
+    (Array.isArray(v) ? v : String(v || '').split(',')).forEach(function (k) {
+      k = String(k).trim().toLowerCase(); if (k) out[k] = true;
+    });
+    return out;
+  }
+  SKIP = parseSkip((/[?&]skip=([a-z,]*)/i.exec(location.search) || [])[1]);
   var FORCED = (/[?&]aether=([a-z]+)/i.exec(location.search) || [])[1];
   FORCED = FORCED ? FORCED.toLowerCase() : null;
 
@@ -2325,7 +2337,10 @@
   }
   Engine.prototype.pickClass = function (first) {
     var recent = this.history.slice(-Math.min(2, this.scenes.length - 1));
-    var opts = this.scenes.filter(function (c) { return recent.indexOf(c.sceneName) < 0 && !(first && c === Nebula); });
+    var allowed = this.scenes.filter(function (c) { return !SKIP[c.key]; });
+    if (!allowed.length) allowed = this.scenes;
+    var opts = allowed.filter(function (c) { return recent.indexOf(c.sceneName) < 0 && !(first && c === Nebula); });
+    if (!opts.length) opts = allowed;
     if (this.opts.still) opts = [Nebula, Julia];
     var forced = this.known.filter(function (c) { return c.key === FORCED; });
     if (forced.length && !this.history.length) return forced[0];
@@ -2647,7 +2662,17 @@
     key = String(key || '').toLowerCase();
     return engine.known.filter(function (c) { return c.key === key; })[0] || null;
   }
+  function setSkip(v) {
+    SKIP = parseSkip(v);
+    // the scene on screen was just left out: move on, unless someone is holding it
+    var c = engine && engine.showing();
+    if (c && SKIP[c.key] && !engine.hold && !still) { engine.goTo(); run(); }
+  }
+  window.addEventListener('aether-skip', function (e) { setSkip(e.detail); });
+
   window.Aether = {
+    // keys left out of the rotation; pass an array to change them
+    skip: function (v) { if (v !== undefined) setSkip(v); return Object.keys(SKIP); },
     scenes: function () { return engine ? engine.known.map(function (c) { return { key: c.key, name: c.sceneName }; }) : []; },
     scene: function () { var c = engine && engine.showing(); return c ? { key: c.key, name: c.sceneName } : null; },
     // show one scene now; it stays unless hold is false
