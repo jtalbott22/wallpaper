@@ -8,9 +8,9 @@
 
 <img src="docs/screenshots/hero.webp" alt="Aether drifting from Particle Life into Silk, Reaction and Galaxy" width="720">
 
-Ten real-time simulations on your graphics chip, dissolving slowly from one
-into the next, behind your windows on Ubuntu / GNOME, with native hosts for
-Windows and macOS.
+Sixteen real-time simulations on your graphics chip, dissolving slowly from
+one into the next, behind your windows on Ubuntu / GNOME, macOS and Windows,
+and in any browser.
 
 **Linux, Windows, macOS and any browser, [in one evening](#act-3-everywhere-in-one-evening).**
 [Try it in your browser →](https://joshuaallentalbott.com/aether.html)
@@ -182,7 +182,7 @@ mouse (the desktop window doesn't receive pointer events).
 ## Windows
 
 On Windows, a small native host (`windows/`, C# / .NET 8 with WebView2) runs
-the [web version](#on-the-web) — all ten scenes plus [six more](#more-scenes-on-windows-and-macos) — behind the desktop
+the [web version](#on-the-web) — all [sixteen scenes](#the-six-newer-scenes) — behind the desktop
 icons on every monitor.
 
 **1. Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)**
@@ -209,7 +209,7 @@ for building from source, options and troubleshooting.
 ## macOS
 
 On macOS, a small native host (`macos/`, Swift with WKWebView) runs the
-[web version](#on-the-web) — all ten scenes plus [six more](#more-scenes-on-windows-and-macos) — as the desktop
+[web version](#on-the-web) — all [sixteen scenes](#the-six-newer-scenes) — as the desktop
 background, under the icons, on every screen and every Space.
 
 **1. Install the Swift tools** if you don't have Xcode: `xcode-select --install`.
@@ -233,10 +233,10 @@ apps), while the screen is locked or asleep, and in Low Power Mode. See
 [macos/README.md](macos/README.md) for building from source, options and
 troubleshooting.
 
-### More scenes on Windows and macOS
+### The six newer scenes
 
-The web version, and so both desktop hosts, has six scenes the Linux renderer
-doesn't:
+The web engine (the default on Linux, and what the macOS and Windows apps
+run) has six scenes the native Linux renderer doesn't:
 
 | Scene | What it simulates |
 |---|---|
@@ -379,8 +379,8 @@ python3 -m aether --sheet x.png --scene "Name"
 
 ## On the web
 
-[`web/aether-bg.js`](web/aether-bg.js) is a WebGL2 port of all ten scenes,
-plus six newer ones, made to sit behind a web page as a slow, subtle background. It's one 150 KB
+[`web/aether-bg.js`](web/aether-bg.js) is the WebGL2 engine with all sixteen
+scenes, made to sit behind a web page as a slow, subtle background. It's one 150 KB
 file with no dependencies. As a page background it shows the calmer five
 (Nebula, Julia, Reaction, Physarum and Attractor); add `data-scenes="all"` to
 the canvas for all of them, as the desktop wallpaper page does. The wallpaper page also sets
