@@ -1,0 +1,11 @@
+Aether 1.0 is out 🎉
+
+A live wallpaper of particles, fluids and fractals that never repeats: 16 real-time GPU simulations (galaxies, silk, particle life, reaction-diffusion, a ray-marched Mandelbulb…) slowly dissolving into one another, each with the math behind it a tap away.
+
+It runs as the desktop on Ubuntu (top bar menu), macOS (menu bar) and Windows (tray), pauses itself whenever a window covers it, and the same engine is the background of my website.
+
+Free and open source.
+Try it in your browser: joshuaallentalbott.com/aether.html (link in bio)
+Download: github.com/jtalbott22/wallpaper/releases
+
+#ai #claudecode #generativeart #creativecoding #webgl #livewallpaper #opensource #linux #ubuntu #macos #windows #shaders #indiedev #buildinpublic
