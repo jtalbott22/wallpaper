@@ -2764,6 +2764,8 @@
     SKIP = parseSkip(v);
     // the scene on screen was just left out: move on, unless someone is holding it
     var c = engine && engine.showing();
+    // a scene picked early (its shaders compiling) that is now left out: pick again
+    if (engine && engine.want && SKIP[engine.want.key] && !engine.wantNow) engine.want = null;
     if (c && SKIP[c.key] && !engine.hold && !still) { engine.goTo(); run(); }
   }
   window.addEventListener('aether-skip', function (e) { setSkip(e.detail); });

@@ -327,8 +327,7 @@
   function next() {
     var cur = A.scene();
     if (cur) past.push(cur.key);
-    A.next();
-    if (A.hold()) setURL(A.scene() && A.scene().key);
+    A.next();   // the address bar follows when the new scene starts (see onScene)
   }
   function prev() {
     var key = past.pop();
@@ -340,6 +339,7 @@
   function onScene() {
     var s = A.scene();
     if (!s) return;
+    if (A.hold()) setURL(s.key);   // a held scene is shareable from the address bar
     $('nowName').textContent = s.name;
     $('sceneName').textContent = s.name;
     grid.querySelectorAll('.cell').forEach(function (c) {
