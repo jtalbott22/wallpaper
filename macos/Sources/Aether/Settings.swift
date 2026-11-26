@@ -39,6 +39,12 @@ final class Settings {
         set { defaults.set(newValue, forKey: "mathOnStart") }
     }
 
+    /// Scene keys left out of the rotation (they can still be picked from the Scene menu).
+    var skipped: [String] {
+        get { (defaults.stringArray(forKey: "skipped") ?? []).filter { k in AppDelegate.scenes.contains { $0.0 == k } } }
+        set { defaults.set(newValue, forKey: "skipped") }
+    }
+
     /// nil: all scenes in turn.
     var scene: String? {
         get { defaults.string(forKey: "scene") }

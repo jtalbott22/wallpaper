@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let brightLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     let slider = NSSlider(value: 100, minValue: 5, maxValue: 150, target: nil, action: nil)
     var pauseItem: NSMenuItem!, loginItem: NSMenuItem!, sceneMenu = NSMenu(), qualityMenu = NSMenu()
+    var rotationItem: NSMenuItem!, rotationMenu = NSMenu(), rotationReset: NSMenuItem!
     var mathItem: NSMenuItem!, mathAutoItem: NSMenuItem!
 
     init(options: Options) {
@@ -130,6 +131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let s = options.scene ?? settings.scene { q.append(URLQueryItem(name: "aether", value: s)) }
         q.append(URLQueryItem(name: "quality", value: settings.quality))
         if !settings.mathOnStart { q.append(URLQueryItem(name: "math", value: "0")) }
+        let skipped = settings.skipped
+        if !skipped.isEmpty { q.append(URLQueryItem(name: "skip", value: skipped.joined(separator: ","))) }
         c.queryItems = q
         return c.url!
     }
@@ -276,6 +279,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sceneMenu.addItem(sceneEntry(nil, "All Scenes, in Turn"))
         sceneMenu.addItem(.separator())
         for (key, title) in AppDelegate.scenes { sceneMenu.addItem(sceneEntry(key, title)) }
+        // a check mark per scene: unchecked ones are left out of the rotation
+        rotationItem = NSMenuItem(title: "Scenes in Rotation", action: nil, keyEquivalent: "")
+        rotationItem.submenu = rotationMenu
+        rotationMenu.autoenablesItems = false
+        for (key, title) in AppDelegate.scenes {
+            let item = NSMenuItem(title: title, action: #selector(toggleRotation(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = key
+            rotationMenu.addItem(item)
+        }
+        rotationMenu.addItem(.separator())
+        rotationReset = NSMenuItem(title: "Put All Back", action: #selector(resetRotation), keyEquivalent: "")
+        rotationReset.target = self
+        rotationMenu.addItem(rotationReset)
         let qualityItem = NSMenuItem(title: "Quality", action: nil, keyEquivalent: "")
         qualityItem.submenu = qualityMenu
         qualityMenu.autoenablesItems = false
@@ -295,7 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mathAutoItem = NSMenuItem(title: "Show the Math When a Scene Starts", action: #selector(toggleMathAuto), keyEquivalent: "")
 
         for item in [statusLine, .separator(), brightLine, sliderItem, .separator(),
-                     pauseItem!, sceneItem, qualityItem, .separator(),
+                     pauseItem!, sceneItem, rotationItem!, qualityItem, .separator(),
                      mathItem!, mathAutoItem!, .separator(), loginItem!, .separator(),
                      NSMenuItem(title: "Reload", action: #selector(reloadClicked), keyEquivalent: "r"),
                      NSMenuItem(title: "Show Log", action: #selector(showLog), keyEquivalent: ""),
@@ -339,6 +356,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for item in sceneMenu.items where item.action != nil {
             item.state = (item.representedObject as? String) == settings.scene ? .on : .off
         }
+        let skipped = settings.skipped
+        for item in rotationMenu.items where item.action == #selector(toggleRotation(_:)) {
+            item.state = skipped.contains(item.representedObject as? String ?? "") ? .off : .on
+        }
+        let total = AppDelegate.scenes.count
+        rotationItem.title = skipped.isEmpty ? "Scenes in Rotation: All" : "Scenes in Rotation: \(total - skipped.count) of \(total)"
+        rotationReset.isEnabled = !skipped.isEmpty
         if LoginItem.available {
             let s = LoginItem.status
             loginItem.isEnabled = true
@@ -404,6 +428,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.mathOnStart.toggle()
         for v in views.values { v.send("aether-math-auto", settings.mathOnStart ? "true" : "false") }
         updateMenu()
+    }
+
+    @objc func toggleRotation(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String else { return }
+        var skipped = settings.skipped
+        if let i = skipped.firstIndex(of: key) { skipped.remove(at: i) } else { skipped.append(key) }
+        settings.skipped = skipped
+        Log.write("left out of the rotation: \(skipped.isEmpty ? "none" : skipped.joined(separator: ", "))")
+        sendSkipped()
+        updateMenu()
+    }
+
+    @objc func resetRotation() {
+        settings.skipped = []
+        Log.write("every scene back in the rotation")
+        sendSkipped()
+        updateMenu()
+    }
+
+    /// Tells the open pages (no reload); new pages get it from the URL.
+    func sendSkipped() {
+        let json = "[" + settings.skipped.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+        for v in views.values { v.send("aether-skip", json) }
     }
 
     @objc func pickScene(_ sender: NSMenuItem) {
