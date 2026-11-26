@@ -60,6 +60,10 @@ Click its icon for:
 - **Pause / Resume**, saved
 - **Scene**: all of them in turn, or stay on one (the page also shows each
   scene's math when it starts, and runs at the Balanced quality preset)
+- **Scenes in rotation**: a tick per scene; untick the ones you don't like to
+  leave them out of the rotation (you can still pick them from Scene). The
+  list stays open while you tick and untick; **Put all back** ticks them all
+  again. Saved, and applied without a reload
 - **Next scene**: move on now
 - **Start at login**: adds or removes `Aether` under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`

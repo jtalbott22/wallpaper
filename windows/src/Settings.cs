@@ -9,6 +9,7 @@ sealed class Settings
     public double Brightness { get; set; } = 1.0;   // 0.05–1.5, as the page's level
     public bool Paused { get; set; }                // paused from the tray
     public string? Scene { get; set; }              // null: cycle through all scenes
+    public List<string> Skipped { get; set; } = new();   // scene keys left out of the rotation
 
     public static readonly string Folder =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aether");
@@ -23,6 +24,8 @@ sealed class Settings
             {
                 var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
                 s.Brightness = Math.Clamp(double.IsFinite(s.Brightness) ? s.Brightness : 1, 0.05, 1.5);
+                s.Skipped ??= new();
+                s.Skipped.RemoveAll(k => string.IsNullOrWhiteSpace(k));
                 return s;
             }
         }

@@ -77,6 +77,9 @@ Aether lives in the menu bar (a small circle). Click it for:
 - **Brightness** slider (5–150%), saved
 - **Pause / Resume**, saved
 - **Scene**: all of them in turn, or stay on one
+- **Scenes in Rotation**: a check mark per scene; uncheck the ones you don't
+  like to leave them out of the rotation (you can still pick them from Scene).
+  **Put All Back** checks them all again. Saved, and applied without a reload
 - **Quality**: Battery Saver, Balanced (default), High or Maximum. Each scene's
   resolution adapts to keep motion smooth: it rises while frames arrive on
   time and drops as soon as they don't (the learned sizes are remembered per

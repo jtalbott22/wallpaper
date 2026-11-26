@@ -41,7 +41,7 @@ sealed class HostContext : ApplicationContext
     readonly NotifyIcon tray;
     Icon? trayIcon;
     string trayIconKey = "";
-    readonly ToolStripMenuItem statusItem, pauseItem, loginItem, sceneMenu, nextItem;
+    readonly ToolStripMenuItem statusItem, pauseItem, loginItem, sceneMenu, nextItem, rotationMenu, rotationReset;
     readonly ToolStripLabel brightLabel;
     readonly TrackBar slider;
 
@@ -69,13 +69,29 @@ sealed class HostContext : ApplicationContext
         sceneMenu.DropDownItems.Add(SceneItem(null, "All scenes, in turn"));
         sceneMenu.DropDownItems.Add(new ToolStripSeparator());
         foreach (var (key, title) in Scenes) sceneMenu.DropDownItems.Add(SceneItem(key, title));
+        // a tick per scene: unticked ones are left out of the rotation
+        rotationMenu = new ToolStripMenuItem("Scenes in rotation");
+        foreach (var (key, title) in Scenes)
+        {
+            var item = new ToolStripMenuItem(title) { Tag = key };
+            item.Click += (_, _) => ToggleRotation(key);
+            rotationMenu.DropDownItems.Add(item);
+        }
+        rotationMenu.DropDownItems.Add(new ToolStripSeparator());
+        rotationReset = new ToolStripMenuItem("Put all back", null, (_, _) => ResetRotation());
+        rotationMenu.DropDownItems.Add(rotationReset);
+        // stay open while scenes are ticked and unticked
+        rotationMenu.DropDown.Closing += (_, e) =>
+        {
+            if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked) e.Cancel = true;
+        };
         nextItem = new ToolStripMenuItem("Next scene", null, (_, _) => NextScene());
 
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
             statusItem, new ToolStripSeparator(), brightLabel, sliderHost, new ToolStripSeparator(),
-            pauseItem, sceneMenu, nextItem, loginItem, new ToolStripSeparator(),
+            pauseItem, sceneMenu, rotationMenu, nextItem, loginItem, new ToolStripSeparator(),
             new ToolStripMenuItem("Open Aether in browser", null, (_, _) => OpenPage()),
             new ToolStripMenuItem("Reload", null, (_, _) => Reload()),
             new ToolStripMenuItem("Open log folder", null, (_, _) => OpenFolder(Log.Folder)),
@@ -223,6 +239,7 @@ sealed class HostContext : ApplicationContext
     string PageUrl()
     {
         var url = $"{WallpaperView.Origin}wallpaper.html?level={settings.Brightness.ToString("0.##", CultureInfo.InvariantCulture)}";
+        if (settings.Skipped.Count > 0) url += "&skip=" + string.Join(",", settings.Skipped);
         return settings.Scene is { } s ? url + "&aether=" + s : url;
     }
 
@@ -306,6 +323,31 @@ sealed class HostContext : ApplicationContext
         return item;
     }
 
+    void ToggleRotation(string key)
+    {
+        if (!settings.Skipped.Remove(key)) settings.Skipped.Add(key);
+        settings.Save();
+        Log.Write("left out of the rotation: " + (settings.Skipped.Count == 0 ? "none" : string.Join(", ", settings.Skipped)));
+        SendSkipped();
+        UpdateMenu();
+    }
+
+    void ResetRotation()
+    {
+        settings.Skipped.Clear();
+        settings.Save();
+        Log.Write("every scene back in the rotation");
+        SendSkipped();
+        UpdateMenu();
+    }
+
+    /// <summary>Tells the open pages (no reload); new pages get it from the URL.</summary>
+    void SendSkipped()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(settings.Skipped);
+        foreach (var v in views.Values) v.Run($"window.dispatchEvent(new CustomEvent('aether-skip', {{ detail: {json} }}))");
+    }
+
     void NextScene()
     {
         foreach (var v in views.Values) v.Run("window.Aether && Aether.next()");
@@ -353,6 +395,15 @@ sealed class HostContext : ApplicationContext
                 if (mi.Checked && mi.Tag != null) sceneTitle = mi.Text ?? "";
             }
         sceneMenu.Text = "Scene: " + sceneTitle;
+        int skipped = 0;
+        foreach (ToolStripItem i in rotationMenu.DropDownItems)
+            if (i is ToolStripMenuItem mi && mi.Tag is string key)
+            {
+                mi.Checked = !settings.Skipped.Contains(key);
+                if (!mi.Checked) skipped++;
+            }
+        rotationMenu.Text = skipped == 0 ? "Scenes in rotation: all" : $"Scenes in rotation: {Scenes.Length - skipped} of {Scenes.Length}";
+        rotationReset.Enabled = skipped > 0;
         nextItem.Enabled = n > 0 && all == null;
         SetTrayIcon(all != null || (n > 0 && c == n));
         var tip = "Aether: " + status;
