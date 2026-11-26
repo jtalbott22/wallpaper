@@ -2,25 +2,38 @@ namespace Aether;
 
 static class Program
 {
+    public const string ExitSignalName = @"Local\AetherWallpaperHostExit";
+
     [STAThread]
     static int Main(string[] args)
     {
+        bool Has(string flag) => args.Contains(flag, StringComparer.OrdinalIgnoreCase);
+
         // Aether.exe --exit asks a running copy to close cleanly
-        using var exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\AetherWallpaperHostExit");
-        if (args.Contains("--exit", StringComparer.OrdinalIgnoreCase)) { exitSignal.Set(); return 0; }
+        using var exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ExitSignalName);
+        if (Has("--exit")) { exitSignal.Set(); return 0; }
+
+        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+
+#if BUNDLE
+        // the single-file exe installs and removes itself (src/Installer.cs)
+        if (Has("--uninstall")) { Installer.Uninstall(Has("--quiet")); return 0; }
+        if (Has("--install")) { Installer.Install(Has("--start-at-login")); return 0; }
+        if (!Installer.RunningInstalled && !Has("--no-install") && Installer.Offer()) return 0;
+        exitSignal.Reset();   // the installer may have signalled an older copy to exit
+#endif
 
         using var single = new Mutex(true, @"Local\AetherWallpaperHost", out bool first);
         if (!first) return 0;   // already running: its tray icon has the controls
         exitSignal.Reset();
 
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
         Application.ThreadException += (_, e) => Log.Write("error: " + e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Write("fatal: " + e.ExceptionObject);
 
         // --devtools: right-click menu and F12 in the wallpaper; --debug-port=9222: Chrome DevTools Protocol
-        bool devTools = args.Contains("--devtools", StringComparer.OrdinalIgnoreCase);
+        bool devTools = Has("--devtools");
         int debugPort = args.Select(a => a.StartsWith("--debug-port=", StringComparison.OrdinalIgnoreCase)
             && int.TryParse(a["--debug-port=".Length..], out int p) ? p : 0).DefaultIfEmpty(0).Max();
         // --scene physarum: stay on one scene for this run (the tray's Scene choice is the saved one)

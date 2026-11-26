@@ -298,7 +298,9 @@ sealed class HostContext : ApplicationContext
             if (File.Exists(Path.Combine(dir.FullName, "web", "wallpaper.html")) &&
                 File.Exists(Path.Combine(dir.FullName, "windows", "Aether.csproj")))
                 return Path.Combine(dir.FullName, "web");
-        return Path.Combine(AppContext.BaseDirectory, "web");   // the copy shipped next to the exe
+        var shipped = Path.Combine(AppContext.BaseDirectory, "web");   // the copy shipped next to the exe (install.ps1)
+        if (File.Exists(Path.Combine(shipped, "wallpaper.html"))) return shipped;
+        return Installer.UnpackWeb();   // the single-file exe: the copy built into it
     }
 
     // ---- pausing -------------------------------------------------------------

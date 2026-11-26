@@ -25,9 +25,24 @@
   </ItemGroup>
 
   <!-- the shared page ships next to the exe, so a published copy works on its own -->
-  <ItemGroup>
+  <ItemGroup Condition="'$(PublishSingleFile)' != 'true'">
     <Content Include="..\web\wallpaper.html;..\web\aether.html;..\web\aether-bg.js" Link="web\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- ...and inside the exe too, for the single-file build (build-exe.ps1), which unpacks it on start -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\web\wallpaper.html;..\web\aether.html;..\web\aether-bg.js" LogicalName="web/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- the single-file build installs itself when run from anywhere else (src/Installer.cs) -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <DefineConstants>$(DefineConstants);BUNDLE</DefineConstants>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
 
   <!-- the WebView2 package also references its WPF control, which a WinForms app doesn't need -->
   <Target Name="DropWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
