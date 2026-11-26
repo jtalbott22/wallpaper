@@ -135,8 +135,11 @@ What the extension does:
 
 - runs the same **web engine** the macOS and Windows apps show: all sixteen
   scenes, the quality presets and the math cards, via `python3 -m aether.webhost`
-  ([`web/wallpaper.html`](web/wallpaper.html) in a WebKitGTK view). It needs
-  WebKitGTK 4.1, which Ubuntu installs with the desktop (`gir1.2-webkit2-4.1`).
+  ([`web/wallpaper.html`](web/wallpaper.html) in a WebKitGTK view). For the
+  best performance install the GTK 4 bindings, `sudo apt install gir1.2-webkit-6.0`;
+  without them it uses the GTK 3 ones Ubuntu ships with the desktop
+  (`gir1.2-webkit2-4.1`), which cost more GPU time on fractionally scaled
+  screens such as 125%.
   You can switch to the native GPU renderer (`python3 -m aether`, the original
   ten scenes on OpenGL 4.3 compute shaders) or the older CPU renderer,
   [Mirage](#mirage-the-original-cpu-renderer), from the menu
@@ -147,6 +150,8 @@ What the extension does:
 - sizes it to the primary monitor
 - **pauses rendering** while a maximized or fullscreen window covers the
   screen, and while the screen is locked, so it costs nothing while you work
+- caps the frame rate at 20 fps on battery, as the native renderer does
+  (`--battery-fps` changes it)
 - adds an **Aether menu to the top bar** that matches the macOS menu bar item,
   icon included:
   - what's playing (for example "Running · Free Energy")

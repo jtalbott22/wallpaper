@@ -2487,6 +2487,12 @@
     max:      { start: 2.2e6,  max: 1e9,   fps: 60 }
   }[QUALITY] || null;
   var FPS = PRESET ? PRESET.fps : 30, MIN_PX = 0.2e6;
+  // ?fps=20 (or an 'aether-fps' event with a number, 0 to lift it) caps the
+  // frame rate below the preset's, for example on battery
+  var BASE_FPS = FPS;
+  function capFps(v) { v = parseFloat(v); FPS = v > 0 ? Math.min(BASE_FPS, Math.max(10, v)) : BASE_FPS; }
+  capFps((/[?&]fps=([0-9.]+)/.exec(location.search) || [])[1]);
+  window.addEventListener('aether-fps', function (e) { capFps(e.detail); });
   // wallpaper hosts get the richer grade (bloom, sharpening, contrast) and FXAA;
   // the 60 fps presets also get ray marching (shadows, the Mandelbulb, more samples)
   var GRADE = !!PRESET || canvas.getAttribute('data-grade') === 'rich';

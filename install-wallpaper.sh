@@ -6,8 +6,9 @@
 #   ./install-wallpaper.sh --engine aether   use the native GPU renderer (10 scenes) instead
 #   ./install-wallpaper.sh --engine mirage   use the older CPU renderer instead
 #
-# The web engine needs WebKitGTK 4.1 (sudo apt install gir1.2-webkit2-4.1);
-# without it the extension falls back to the native renderer on its own.
+# The web engine runs best with WebKitGTK 6.0 (sudo apt install gir1.2-webkit-6.0)
+# and also works with WebKitGTK 4.1 (gir1.2-webkit2-4.1, on Ubuntu by default);
+# with neither, the extension falls back to the native renderer on its own.
 # The top bar menu can switch renderers at any time.
 #   ./install-wallpaper.sh --uninstall
 #
