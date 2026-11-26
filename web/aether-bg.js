@@ -18,6 +18,11 @@
   if (!canvas || !window.WebGL2RenderingContext) return;
 
   var gl, FLOAT_RT, F16, F32, vao, programs, engine, raf = 0;
+  // Phones and tablets: their GPU watchdog resets the GPU when a single frame's
+  // work runs long, so heavy scenes use fewer particles and fewer ray steps there.
+  var MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform || ''));
+  var PCAP = MOBILE ? 0.5 : 1;
   var reduceMQ = window.matchMedia('(prefers-reduced-motion: reduce)');
   var darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -155,28 +160,43 @@
   }
 
   // ------------------------------------------------------------- GL helpers
+  // A shader program. Compiling and linking are only started here; the result
+  // is checked when the program is first used. With KHR_parallel_shader_compile
+  // the driver compiles in the background meanwhile, so a scene's shaders can
+  // be prepared before it starts instead of freezing the frame it starts in.
+  var PARALLEL = null;
   function Program(vs, fs) {
     var p = gl.createProgram();
-    [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].forEach(function (pair) {
+    this.shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(function (pair) {
       var s = gl.createShader(pair[0]);
       gl.shaderSource(s, pair[1]);
       gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS) && !gl.isContextLost())
-        throw new Error('aether-bg shader: ' + gl.getShaderInfoLog(s));
       gl.attachShader(p, s);
+      return s;
     });
     gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS) && !gl.isContextLost())
-      throw new Error('aether-bg link: ' + gl.getProgramInfoLog(p));
     this.p = p;
+    this.u = null;
+  }
+  // true once the driver has finished (without the extension: assume so)
+  Program.prototype.done = function () {
+    return !!this.u || !PARALLEL || gl.getProgramParameter(this.p, PARALLEL.COMPLETION_STATUS_KHR);
+  };
+  Program.prototype.finish = function () {
+    var p = this.p;
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS) && !gl.isContextLost()) {
+      var log = this.shaders.map(function (s) { return gl.getShaderInfoLog(s); }).join(' ');
+      throw new Error('aether-bg shader: ' + (log.trim() || gl.getProgramInfoLog(p)));
+    }
     this.u = {};
     var n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS) || 0;
     for (var i = 0; i < n; i++) {
       var info = gl.getActiveUniform(p, i);
       this.u[info.name.replace(/\[0\]$/, '')] = { loc: gl.getUniformLocation(p, info.name), type: info.type, size: info.size };
     }
-  }
+  };
   Program.prototype.use = function (vals) {
+    if (!this.u) this.finish();
     gl.useProgram(this.p);
     if (vals) this.set(vals);
     return this;
@@ -896,7 +916,7 @@
 
   var Silk = extend(function Silk(r, w, h) {
     Scene.call(this, r, w, h);
-    particles(this, Math.min(1 << 18, Math.max(1 << 16, w * h * 0.25)), 2);
+    particles(this, Math.min((1 << 18) * PCAP, Math.max((1 << 16) * PCAP, w * h * 0.25)), 2);
     this.shape = r.choice([0, 0, 1, 2, 3]);
     this.radius = 1.6;
     this.seed = r.bits();
@@ -997,7 +1017,7 @@
 
   var Chaos = extend(function Chaos(r, w, h) {
     Scene.call(this, r, w, h);
-    particles(this, Math.min(1 << 17, Math.max(1 << 15, w * h * 0.12)), 2);
+    particles(this, Math.min((1 << 17) * PCAP, Math.max((1 << 15) * PCAP, w * h * 0.12)), 2);
     this.order = CHAOS.map(function (s, i) { return i; }).sort(function () { return r() - 0.5; });
     this.idx = 0;
     this.a = this.b = this.order[0];
@@ -1016,7 +1036,7 @@
     this.src.bind();
     program('chaos.init', CHAOS_INIT_FS).use({ uPW: PW, uSeed: this.seed });
     fullscreen();
-    for (var i = 0; i < 90; i++) this.integrate(1 / 15);   // settle onto the attractor first
+    this.warm = 90;   // settle onto the attractor over the first frames (never all in one GPU job)
   }, 'Chaos', 1.0, 'chaos');
   Chaos.prototype.integrate = function (dt) {
     var A = CHAOS[this.a], B = CHAOS[this.b];
@@ -1044,6 +1064,7 @@
       this.mix = smooth(u);
       if (u >= 1) { this.a = this.b; this.mix = 0; this.morph = -1; this.nextMorph = this.t + this.r.uniform(28, 45); }
     }
+    if (this.warm > 0) { var k = Math.min(this.warm, 6); this.warm -= k; for (var i = 0; i < k; i++) this.integrate(1 / 15); }
     this.integrate(dt);
   };
   Chaos.prototype.draw = function () {
@@ -1112,7 +1133,7 @@
   }
   var Galaxy = extend(function Galaxy(r, w, h) {
     Scene.call(this, r, w, h);
-    particles(this, Math.min(1 << 18, Math.max(1 << 16, w * h * 0.25)), 2);
+    particles(this, Math.min((1 << 18) * PCAP, Math.max((1 << 16) * PCAP, w * h * 0.25)), 2);
     this.ng = r.choice([2, 2, 2, 3]);
     this.eps = 0.12;
     var masses = [1];
@@ -1410,7 +1431,7 @@
   var Life = extend(function Life(r, w, h) {
     Scene.call(this, r, w, h);
     this.k = r.choice([3, 4, 4, 5, 5, 6]);
-    this.n = 4096;
+    this.n = MOBILE ? 2048 : 4096;
     this.world = [this.aspect, 1];
     this.a = this.keep(new Target(LIFE_W, this.n / LIFE_W, F32, gl.NEAREST));
     this.b = this.keep(new Target(LIFE_W, this.n / LIFE_W, F32, gl.NEAREST));
@@ -1537,6 +1558,7 @@
     'void main() { vec4 a = texelFetch(uA, ivec2(gl_VertexID % uPW, gl_VertexID / uPW), 0);',
     '  gl_Position = vec4(a.xy / uWorld * 2.0 - 1.0, 0.0, 1.0); gl_PointSize = 1.0; }'
   ].join('\n');
+  var CY_SPLAT_FS = HEAD + 'out vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }';
   var CY_SHOW_FS = frag([
     'uniform sampler2D uCount, uField; uniform float uRef; uniform int uShape; uniform vec2 uWorld;',
     'void main() {',
@@ -1553,7 +1575,7 @@
 
   var Cymatics = extend(function Cymatics(r, w, h) {
     Scene.call(this, r, w, h);
-    particles(this, Math.min(1 << 18, Math.max(1 << 16, w * h * 0.16)), 2);
+    particles(this, Math.min((1 << 18) * PCAP, Math.max((1 << 16) * PCAP, w * h * 0.16)), 2);
     this.world = [this.aspect, 1];
     this.shape = r() < 0.55 ? 0 : 1;
     this.fw = Math.max(64, w >> 1); this.fh = Math.max(64, h >> 1);
@@ -1620,7 +1642,7 @@
     this.count2.bind();
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
-    program('cy.splat', ZERO_FS.replace('vec4(0.0)', 'vec4(1.0)'), CY_SPLAT_VS).use({ uA: tex(0, this.src.tex[0]), uPW: PW, uWorld: this.world });
+    program('cy.splat', CY_SPLAT_FS, CY_SPLAT_VS).use({ uA: tex(0, this.src.tex[0]), uPW: PW, uWorld: this.world });
     gl.drawArrays(gl.POINTS, 0, this.count);
     gl.disable(gl.BLEND);
     var area = this.shape === 0 ? this.w * this.h : Math.PI * Math.pow(0.47 * this.h, 2);
@@ -1795,7 +1817,7 @@
 
   var Soup = extend(function Soup(r, w, h) {
     Scene.call(this, r, w, h);
-    this.n = 2048;
+    this.n = MOBILE ? 1024 : 2048;   // every pair is checked: a quarter of the work on phones
     this.world = [this.aspect, 1];
     this.src = this.keep(new State(SOUP_W, this.n / SOUP_W, 2));
     this.dst = this.keep(new State(SOUP_W, this.n / SOUP_W, 2));
@@ -1808,8 +1830,7 @@
     this.src.bind();
     program('soup.init', SOUP_INIT_FS).use({ uPW: SOUP_W, uSeed: r.bits(), uWorld: this.world });
     fullscreen();
-    for (var i = 0; i < 40; i++) this.step(1 / 30);
-    this.t = 0;
+    this.warm = 40;   // extra steps spread over the first frames
   }, 'Free Energy', 0.9, 'soup');
   Soup.prototype.step = function (dt) {
     this.dt = dt;
@@ -1817,7 +1838,9 @@
       uPW: SOUP_W, uN: this.n, uWorld: this.world, uDt: 0.016 * Math.min(2, dt * 30), uR0: this.r0, uR: this.rr,
       uAttract: this.attract, uCouple: this.couple, uTempo: this.tempo
     });
-    for (var i = 0; i < 2; i++) {
+    var extra = Math.min(this.warm, MOBILE ? 1 : 3);
+    this.warm -= extra;
+    for (var i = 0; i < 2 + 2 * extra; i++) {
       this.dst.bind();
       p.set({ uA: tex(0, this.src.tex[0]), uB: tex(1, this.src.tex[1]) });
       fullscreen();
@@ -1890,7 +1913,7 @@
 
   var Cosmos = extend(function Cosmos(r, w, h) {
     Scene.call(this, r, w, h);
-    particles(this, Math.min(1 << 18, Math.max(1 << 16, w * h * 0.2)), 2);
+    particles(this, Math.min((1 << 18) * PCAP, Math.max((1 << 16) * PCAP, w * h * 0.2)), 2);
     this.world = [this.aspect, 1];
     this.gh = 160; this.gw = Math.round(160 * this.aspect);
     this.rho = this.keep(new Target(this.gw, this.gh, F16, gl.NEAREST, gl.REPEAT));
@@ -2019,6 +2042,14 @@
     '  vCol = (pal(0.3 + 0.6 * s) + pal(0.98) * pow(s, 4.0) * 0.8) * uIntensity * (0.5 + 0.8 * s);',
     '  gl_Position = vec4(a.xy / uGrid * 2.0 - 1.0, 0.0, 1.0); gl_PointSize = uSize; }'
   ].join('\n');
+  var LQ_INIT_FS = fragMRT([
+    'uniform uint uSeed; uniform vec2 uGrid; uniform int uLayout, uN;',
+    'void main() { int i = int(indexOf(ivec2(gl_FragCoord.xy))); uint s = pcg(uint(i) * 2654435761u + uSeed);',
+    '  vec2 box = uLayout == 2 ? vec2(0.5, 0.42) : vec2(0.42, 0.85); vec2 o = uLayout == 0 ? vec2(0.0) : uLayout == 1 ? vec2(1.0 - box.x, 0.0) : vec2(0.25, 0.4);',
+    '  vec2 q = (o + vec2(rnd(s), rnd(s)) * box) * (uGrid - 2.2) + 1.1;',
+    '  outA = vec4(q, 0.0, 0.0); outB = vec4(0.0); }'
+  ].join('\n'));
+
   var Liquid = extend(function Liquid(r, w, h) {
     Scene.call(this, r, w, h);
     this.gh = 72; this.gw = Math.round(72 * this.aspect);
@@ -2036,13 +2067,7 @@
     this.layout = r.choice([0, 1, 2]);   // dam break left, dam break right, a slab dropped in the middle
     this.duration = [55, 90];
     this.src.bind();
-    program('lq.init', fragMRT([
-      'uniform uint uSeed; uniform vec2 uGrid; uniform int uLayout, uN;',
-      'void main() { int i = int(indexOf(ivec2(gl_FragCoord.xy))); uint s = pcg(uint(i) * 2654435761u + uSeed);',
-      '  vec2 box = uLayout == 2 ? vec2(0.5, 0.42) : vec2(0.42, 0.85); vec2 o = uLayout == 0 ? vec2(0.0) : uLayout == 1 ? vec2(1.0 - box.x, 0.0) : vec2(0.25, 0.4);',
-      '  vec2 q = (o + vec2(rnd(s), rnd(s)) * box) * (uGrid - 2.2) + 1.1;',
-      '  outA = vec4(q, 0.0, 0.0); outB = vec4(0.0); }'
-    ].join('\n'))).use({ uPW: PW, uSeed: this.seed, uGrid: this.grid, uLayout: this.layout, uN: this.count });
+    program('lq.init', LQ_INIT_FS).use({ uPW: PW, uSeed: this.seed, uGrid: this.grid, uLayout: this.layout, uN: this.count });
     fullscreen();
   }, 'Liquid', 0.9, 'liquid');
   Liquid.prototype.substep = function (dt, gravity) {
@@ -2184,7 +2209,7 @@
   // a second march towards the light gives soft shadows. Frames are blended
   // with a sub-pixel jitter, which smooths edges over time.
   var BULB_FS = frag([
-    'uniform vec3 uEye, uTarget, uLightDir; uniform float uPower, uAspect, uFov; uniform vec2 uJitter;',
+    'uniform vec3 uEye, uTarget, uLightDir; uniform float uPower, uAspect, uFov; uniform vec2 uJitter; uniform int uSteps, uShadowSteps;',
     'float de(vec3 p, out float trap) { vec3 z = p; float dr = 1.0, r = 0.0; trap = 1e9;',
     '  for (int i = 0; i < 8; i++) { r = length(z); if (r > 2.0) break;',
     '    float th = acos(clamp(z.z / r, -1.0, 1.0)) * uPower, ph = atan(z.y, z.x) * uPower;',
@@ -2195,7 +2220,7 @@
     'vec3 normalAt(vec3 p, float e) { vec2 k = vec2(1.0, -1.0);',
     '  return normalize(k.xyy * de0(p + k.xyy * e) + k.yyx * de0(p + k.yyx * e) + k.yxy * de0(p + k.yxy * e) + k.xxx * de0(p + k.xxx * e)); }',
     'float softShadow(vec3 ro, vec3 rd) { float res = 1.0, t = 0.01;',
-    '  for (int i = 0; i < 28; i++) { float h = de0(ro + rd * t); res = min(res, 8.0 * h / t); t += clamp(h, 0.006, 0.12); if (res < 0.01 || t > 2.5) break; }',
+    '  for (int i = 0; i < 28; i++) { if (i >= uShadowSteps) break; float h = de0(ro + rd * t); res = min(res, 8.0 * h / t); t += clamp(h, 0.006, 0.12); if (res < 0.01 || t > 2.5) break; }',
     '  return clamp(res, 0.0, 1.0); }',
     'void main() {',
     '  vec2 uv = (vUv - 0.5 + uJitter) * vec2(uAspect, 1.0);',
@@ -2204,10 +2229,10 @@
     '  float b = dot(ro, rd), c = dot(ro, ro) - 1.44, disc = b * b - c; vec3 col = vec3(0.0); float glow = 0.0;',
     '  if (disc > 0.0) {',
     '    float t = max(0.0, -b - sqrt(disc)), tmax = -b + sqrt(disc), trap = 0.0; bool hit = false; int i;',
-    '    for (i = 0; i < 150; i++) { vec3 p = ro + rd * t; float d = de(p, trap); glow += exp(-d * 30.0) * 0.01;',
+    '    for (i = 0; i < 150; i++) { if (i >= uSteps) break; vec3 p = ro + rd * t; float d = de(p, trap); glow += exp(-d * 30.0) * 0.01;',
     '      if (d < 0.0005 * t) { hit = true; break; } t += d * 0.9; if (t > tmax) break; }',
     '    if (hit) { vec3 p = ro + rd * t; vec3 n = normalAt(p, 0.0004 * t); vec3 L = normalize(uLightDir);',
-    '      float diff = max(dot(n, L), 0.0), sh = softShadow(p + n * 0.003, L), ao = 1.0 - float(i) / 150.0;',
+    '      float diff = max(dot(n, L), 0.0), sh = softShadow(p + n * 0.003, L), ao = 1.0 - float(i) / float(uSteps);',
     '      float spec = pow(max(dot(reflect(-L, n), -rd), 0.0), 40.0);',
     '      vec3 base = pal(0.2 + 0.75 * clamp(sqrt(trap) * 0.75, 0.0, 1.0));',
     '      col = base * (0.04 + 1.2 * diff * sh) * ao * ao + pal(0.98) * spec * sh * 0.7 + base * 0.15 * max(n.y, 0.0) * ao; } }',
@@ -2233,7 +2258,7 @@
     gl.blendColor(0, 0, 0, this.frame < 3 ? 1 : 0.4);
     program('bulb', BULB_FS).use({
       uEye: [R * Math.cos(a), this.camH.value, R * Math.sin(a)], uTarget: [0, 0, 0], uLightDir: [Math.cos(a + 1.2), 0.9, Math.sin(a + 1.2)],
-      uPower: this.power.value, uAspect: this.aspect, uFov: 0.85, uJitter: [jit[0] / this.h, jit[1] / this.h], uPal: this.pal
+      uPower: this.power.value, uAspect: this.aspect, uFov: 0.85, uSteps: MOBILE ? 72 : 150, uShadowSteps: MOBILE ? 12 : 28, uJitter: [jit[0] / this.h, jit[1] / this.h], uPal: this.pal
     });
     fullscreen();
     gl.disable(gl.BLEND);
@@ -2296,6 +2321,35 @@
     '  float lb = lum(b); fragColor = vec4((lb < lo || lb > hi) ? a : b, 1.0); }'
   ].join('\n'));
 
+  // ------------------------------------------------- shaders per scene
+  // Every program a scene uses, as [key, fragment, vertex]. The engine compiles
+  // these in the background before the scene starts (see Engine.prepare).
+  var ZERO = ['zero', ZERO_FS];
+  Nebula.shaders = [['nebula', NEBULA_FS]];
+  Julia.shaders = [['julia', JULIA_FS]];
+  Reaction.shaders = [['rd.init', RD_INIT_FS], ['rd.step', RD_STEP_FS], ['rd.show', RD_SHOW_FS]];
+  Physarum.shaders = [['ph.init', PH_INIT_FS], ['ph.agent', PH_AGENT_FS], ['ph.deposit', PH_DEPOSIT_FS, PH_DEPOSIT_VS],
+    ['ph.diffuse', PH_DIFFUSE_FS], ['ph.show', PH_SHOW_FS]];
+  Attractor.shaders = [ZERO, ['at.plot', AT_PLOT_FS, AT_VS], ['at.show', AT_SHOW_FS]];
+  Silk.shaders = [ZERO, ['silk.init', SILK_INIT_FS], ['silk.step', SILK_STEP_FS], ['silk.draw', POINT_FS, SILK_VS]];
+  Chaos.shaders = [ZERO, ['chaos.init', CHAOS_INIT_FS], ['chaos.step', CHAOS_STEP_FS], ['chaos.draw', POINT_FS, CHAOS_VS]];
+  Galaxy.shaders = [ZERO, ['gal.init', GAL_INIT_FS], ['gal.step', GAL_STEP_FS], ['gal.draw', GLOW_FS, GAL_VS]];
+  Ink.shaders = [['ink.splat', INK_SPLAT_FS], ['ink.curl', INK_CURL_FS], ['ink.vort', INK_VORT_FS], ['ink.div', INK_DIV_FS],
+    ['ink.scale', INK_SCALE_FS], ['ink.pressure', INK_PRESSURE_FS], ['ink.grad', INK_GRAD_FS], ['ink.advect', INK_ADVECT_FS],
+    ['ink.show', INK_SHOW_FS]];
+  Life.shaders = [ZERO, ['life.init', LIFE_INIT_FS], ['life.step', LIFE_STEP_FS], ['life.draw', LIFE_FS, LIFE_VS]];
+  Cymatics.shaders = [['cy.init', CY_INIT_FS], ['cy.field', CY_FIELD_FS], ['cy.step', CY_STEP_FS],
+    ['cy.splat', CY_SPLAT_FS, CY_SPLAT_VS], ['cy.show', CY_SHOW_FS]];
+  Turing.shaders = [['tu.init', TU_INIT_FS], ['tu.step', TU_STEP_FS], ['tu.show', TU_SHOW_FS]];
+  Soup.shaders = [ZERO, ['soup.init', SOUP_INIT_FS], ['soup.step', SOUP_STEP_FS], ['soup.draw', GLOW_FS, SOUP_VS]];
+  Cosmos.shaders = [['co.init', CO_INIT_FS], ['co.splat', ONE_FS, CO_SPLAT_VS], ['co.jacobi', CO_JACOBI_FS],
+    ['co.accel', CO_ACCEL_FS], ['co.step', CO_STEP_FS], ['co.show', CO_SHOW_FS]];
+  Liquid.shaders = [ZERO, ['lq.init', LQ_INIT_FS], ['lq.p2g', LQ_P2G_FS, LQ_P2G_VS], ['lq.forces', LQ_FORCES_FS],
+    ['lq.div', LQ_DIV_FS], ['lq.jacobi', LQ_JACOBI_FS], ['lq.project', LQ_PROJECT_FS], ['lq.g2p', LQ_G2P_FS],
+    ['lq.draw', GLOW_FS, LQ_DRAW_VS]];
+  Bulb.shaders = [['bulb', BULB_FS]];
+  var ENGINE_SHADERS = [['dissolve', DISSOLVE_FS], ['final', FINAL_FS], ['fxaa', FXAA_FS]];
+
   var TRANSITION = 7;
   // data-scenes="all" on the canvas adds the newer scenes (Silk, Chaos,
   // Galaxy, Ink, Particle Life, Cymatics, Turing, Free Energy, Cosmos,
@@ -2334,7 +2388,42 @@
     this.hold = !!FORCED;
     this.comp = null;
     this.cur = null; this.nxt = null; this.trans = 0; this.time = 0;
+    this.want = null; this.queue = [];
+    this.prepare({ shaders: ENGINE_SHADERS });
   }
+  // Start compiling a scene's shaders without waiting for them. With
+  // KHR_parallel_shader_compile the driver does it in the background; without
+  // it they are compiled one per frame, so no single frame takes the whole hit.
+  var LEAD = 5;   // seconds before a scene ends that the next one starts preparing
+  Engine.prototype.prepare = function (C) {
+    var list = C.shaders || [];
+    for (var i = 0; i < list.length; i++) {
+      var k = list[i];
+      if (programs[k[0]]) continue;
+      if (PARALLEL) programs[k[0]] = new Program(k[2] || FULL_VS, k[1]);
+      else this.queue.push(k);
+    }
+  };
+  Engine.prototype.ready = function (C) {
+    return (C.shaders || []).every(function (k) { return programs[k[0]] && programs[k[0]].done(); });
+  };
+  Engine.prototype.compileQueued = function () {
+    var k = this.queue.shift();
+    if (k && !programs[k[0]]) { programs[k[0]] = new Program(k[2] || FULL_VS, k[1]); programs[k[0]].finish(); }
+  };
+  // ask for scene class C (or a random one): it starts once its shaders are ready;
+  // now = as soon as possible, otherwise when the current scene's time is up
+  Engine.prototype.request = function (C, now) {
+    this.want = C || this.pickClass(false);
+    this.wantNow = !!now;
+    this.wantSince = this.time;
+    this.prepare(this.want);
+  };
+  // the dissolve itself
+  Engine.prototype.begin = function (C) {
+    if (this.nxt) { this.cur.release(); this.cur = this.nxt; }
+    this.nxt = this.newScene(C); this.trans = 0;
+  };
   Engine.prototype.pickClass = function (first) {
     var recent = this.history.slice(-Math.min(2, this.scenes.length - 1));
     var allowed = this.scenes.filter(function (c) { return !SKIP[c.key]; });
@@ -2358,17 +2447,15 @@
     if (this.opts.onScene) this.opts.onScene(s, 'start');   // announces aether-scene (key, name, math)
     return s;
   };
-  // start dissolving into scene class C (or a random one) right away
+  // dissolve into scene class C (or a random one) as soon as its shaders are ready
   Engine.prototype.goTo = function (C) {
     if (!this.cur) { this.cur = this.newScene(C); return; }
-    if (this.nxt) { this.cur.release(); this.cur = this.nxt; }
-    this.nxt = this.newScene(C); this.trans = 0;
+    this.request(C, true);
   };
-  // move on now, dissolving into a fresh scene (a struggling scene hands over early)
+  // move on early (a struggling scene hands over), the same way
   Engine.prototype.skip = function () {
-    if (this.nxt || !this.cur || this.opts.still) return false;
-    this.nxt = this.newScene(this.hold ? this.cur.cls : null);
-    this.trans = 0;
+    if (this.nxt || this.want || !this.cur || this.opts.still) return false;
+    this.request(this.hold ? this.cur.cls : null, true);
     return true;
   };
   Engine.prototype.showing = function () { var s = this.nxt || this.cur; return s ? s.cls : null; };
@@ -2378,8 +2465,19 @@
     if (!this.cur) this.cur = this.newScene();
     gl.bindVertexArray(vao);
     gl.disable(gl.BLEND);
-    this.cur.update(dt);
-    if (!this.nxt && this.cur.t >= this.cur.lifetime && !this.opts.still && !this.hold) { this.nxt = this.newScene(); this.trans = 0; }
+    // On phones, while dissolving, the outgoing scene steps every other frame so
+    // the two scenes never both run at full cost (the GPU watchdog resets the GPU
+    // when a frame's work runs too long).
+    if (MOBILE && this.nxt) { this.skipOdd = !this.skipOdd; if (!this.skipOdd) this.cur.update(dt * 2); }
+    else this.cur.update(dt);
+    this.compileQueued();
+    // pick the next scene a little early and let its shaders compile meanwhile
+    var auto = !this.opts.still && !this.hold;
+    if (auto && !this.want && !this.nxt && this.cur.t >= this.cur.lifetime - LEAD) this.request(null, false);
+    if (this.want && (this.wantNow || (auto && !this.nxt && this.cur.t >= this.cur.lifetime)) &&
+        (this.ready(this.want) || this.time - this.wantSince > 8)) {
+      var C = this.want; this.want = null; this.begin(C);
+    }
     if (this.nxt) { this.nxt.update(dt); this.trans += dt / TRANSITION; }
     var src = this.cur.render();
     if (this.nxt) {
@@ -2628,7 +2726,7 @@
     if (!paused) {
       // faster than real time runs extra whole steps, so the simulations stay stable
       if (speed <= 1) engine.frame(dt * speed);
-      else for (steps += speed; steps >= 1; steps--) engine.frame(dt);
+      else for (steps += Math.min(speed, MOBILE ? 2 : 4); steps >= 1; steps--) engine.frame(dt);
     }
     view.fade = Math.min(1, view.fade + dt / 2.5);
     updateView(dt);
@@ -2742,6 +2840,7 @@
     programs = {};
     vao = gl.createVertexArray();
     FLOAT_RT = !!gl.getExtension('EXT_color_buffer_float');
+    PARALLEL = gl.getExtension('KHR_parallel_shader_compile');
     F32 = { i: gl.RGBA32F, f: gl.RGBA, t: gl.FLOAT };
     F16 = FLOAT_RT ? { i: gl.RGBA16F, f: gl.RGBA, t: gl.HALF_FLOAT } : { i: gl.RGBA8, f: gl.RGBA, t: gl.UNSIGNED_BYTE };
     if (FLOAT_RT) {
