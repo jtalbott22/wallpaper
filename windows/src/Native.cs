@@ -105,4 +105,8 @@ static class Native
     /// <summary>Battery saver / Energy saver is on.</summary>
     public static bool PowerSaving() =>
         GetSystemPowerStatus(out var s) && s.SystemStatusFlag == 1;
+
+    /// <summary>On battery: AC offline (a desktop reports online, or 255 for unknown).</summary>
+    public static bool OnBattery() =>
+        GetSystemPowerStatus(out var s) && s.ACLineStatus == 0;
 }

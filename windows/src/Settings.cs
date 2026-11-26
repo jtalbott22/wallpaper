@@ -9,6 +9,12 @@ sealed class Settings
     public double Brightness { get; set; } = 1.0;   // 0.05–1.5, as the page's level
     public bool Paused { get; set; }                // paused from the tray
     public string? Scene { get; set; }              // null: cycle through all scenes
+    public string Quality { get; set; } = "balanced"; // saver, balanced, high or max
+    public bool MathOnStart { get; set; } = true;    // show a scene's math when it starts
+    public List<string> Skip { get; set; } = new();  // scene keys left out of the rotation
+    public int BatteryFps { get; set; } = 20;        // frame rate cap on battery, 0 for none
+
+    public static readonly string[] Qualities = { "saver", "balanced", "high", "max" };
 
     public static readonly string Folder =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aether");
@@ -23,6 +29,10 @@ sealed class Settings
             {
                 var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
                 s.Brightness = Math.Clamp(double.IsFinite(s.Brightness) ? s.Brightness : 1, 0.05, 1.5);
+                if (!Qualities.Contains(s.Quality)) s.Quality = "balanced";
+                s.Skip = (s.Skip ?? new()).Where(k => !string.IsNullOrWhiteSpace(k))
+                    .Select(k => k.Trim().ToLowerInvariant()).Distinct().ToList();
+                s.BatteryFps = Math.Clamp(s.BatteryFps, 0, 60);
                 return s;
             }
         }

@@ -206,9 +206,12 @@ it, and starts it at every login. Run the script again to update; `-Uninstall`
 removes it.
 
 Its tray icon (the same Aether mark as on macOS, GNOME and the web) has a
-brightness slider, pause and resume, a scene picker, next scene, "Open Aether
-in browser" and "Start at login". It pauses on its own on any monitor a maximized or
-fullscreen window covers, while the session is locked, and in battery saver.
+brightness slider, pause and resume, what's playing, a scene picker, scenes in
+the rotation, next scene, the quality presets, show the math (and math on scene
+start), "Open Aether in browser" and "Start at login", like the macOS and GNOME
+menus. It pauses on its own on any monitor a maximized or fullscreen window
+covers, while the session is locked, and in battery saver, and runs at 20 fps
+on battery.
 It works with both the classic and the Windows 11 24H2 desktop layout and
 reattaches when Explorer restarts. See [windows/README.md](windows/README.md)
 for building from source, options and troubleshooting.

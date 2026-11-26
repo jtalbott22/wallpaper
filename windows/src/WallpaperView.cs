@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using static Aether.Native;
 
@@ -18,6 +19,11 @@ sealed class WallpaperView : NativeWindow, IDisposable
     CoreWebView2Controller? controller;
     bool ready, closed;
     double want = -1, sent = -1;
+    int wantFps = -1, sentFps = -1;
+
+    /// <summary>The scene the page is showing now (from its aether-scene messages).</summary>
+    public string? SceneName { get; private set; }
+    public event Action<WallpaperView>? SceneChanged;
 
     /// <summary>The window or its browser went away underneath us (Explorer or WebView2 restarted).</summary>
     public event Action<WallpaperView, string>? Lost;
@@ -58,7 +64,7 @@ sealed class WallpaperView : NativeWindow, IDisposable
 
         wv.NavigationStarting += (_, e) =>
         {
-            ready = false; sent = -1;
+            ready = false; sent = -1; sentFps = -1;
             if (!e.Uri.StartsWith(Origin, StringComparison.OrdinalIgnoreCase)) e.Cancel = true;
         };
         wv.NavigationCompleted += (_, e) =>
@@ -68,6 +74,7 @@ sealed class WallpaperView : NativeWindow, IDisposable
             Push();
         };
         wv.NewWindowRequested += (_, e) => e.Handled = true;
+        wv.WebMessageReceived += (_, e) => Received(e.WebMessageAsJson);
         wv.ProcessFailed += (_, e) =>
         {
             Log.Write($"{Monitor.Device}: WebView2 {e.ProcessFailedKind}");
@@ -94,6 +101,44 @@ sealed class WallpaperView : NativeWindow, IDisposable
         if (controller != null) controller.CoreWebView2.Navigate(url);
     }
 
+    /// <summary>Fire a page event (aether-show-math, aether-math-auto, aether-skip, ...); detail is JSON.</summary>
+    public void Send(string ev, string detail = "null") =>
+        Run($"window.dispatchEvent(new CustomEvent({JsonSerializer.Serialize(ev)}, {{ detail: {detail} }}))");
+
+    /// <summary>Cap the page's frame rate below its preset's (on battery); 0 lifts the cap.</summary>
+    public void SetFps(int fps)
+    {
+        wantFps = fps;
+        Push();
+    }
+
+    void Received(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("event", out var ev)) return;
+            root.TryGetProperty("detail", out var d);
+            string? Str(string name) => d.ValueKind == JsonValueKind.Object && d.TryGetProperty(name, out var v)
+                && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            double Num(string name) => d.ValueKind == JsonValueKind.Object && d.TryGetProperty(name, out var v)
+                && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
+            switch (ev.GetString())
+            {
+                case "aether-scene" when Str("why") == "start" && Str("name") is { } name:
+                    SceneName = name;
+                    Log.Write($"{Monitor.Device}: {name} at {Num("width"):0}x{Num("height"):0}");
+                    SceneChanged?.Invoke(this);
+                    break;
+                case "aether-quality":
+                    Log.Write($"{Monitor.Device}: {Str("scene") ?? "?"} now {Num("pixels") / 1000:0}k pixels ({Str("why")})");
+                    break;
+            }
+        }
+        catch (JsonException) { }
+    }
+
     /// <summary>Follow the monitor to a new position or size, or a new desktop parent.</summary>
     public void Place(MonitorInfo monitor, DesktopLayout layout)
     {
@@ -114,7 +159,13 @@ sealed class WallpaperView : NativeWindow, IDisposable
 
     void Push()
     {
-        if (!ready || controller == null || Math.Abs(want - sent) < 1e-6 || want < 0) return;
+        if (!ready || controller == null) return;
+        if (wantFps >= 0 && wantFps != sentFps)
+        {
+            sentFps = wantFps;
+            Send("aether-fps", wantFps.ToString(CultureInfo.InvariantCulture));
+        }
+        if (Math.Abs(want - sent) < 1e-6 || want < 0) return;
         sent = want;
         var v = want.ToString("0.###", CultureInfo.InvariantCulture);
         _ = controller.CoreWebView2.ExecuteScriptAsync(

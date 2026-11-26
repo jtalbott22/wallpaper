@@ -23,8 +23,11 @@ static class Program
         bool devTools = args.Contains("--devtools", StringComparer.OrdinalIgnoreCase);
         int debugPort = args.Select(a => a.StartsWith("--debug-port=", StringComparison.OrdinalIgnoreCase)
             && int.TryParse(a["--debug-port=".Length..], out int p) ? p : 0).DefaultIfEmpty(0).Max();
+        // --scene physarum: stay on one scene for this run (the tray's Scene choice is the saved one)
+        int si = Array.FindIndex(args, a => a.Equals("--scene", StringComparison.OrdinalIgnoreCase));
+        string? scene = si >= 0 && si + 1 < args.Length ? args[si + 1].ToLowerInvariant() : null;
         Log.Write($"start {Application.ProductVersion} on {Environment.OSVersion.Version}");
-        var host = new HostContext(devTools, debugPort);
+        var host = new HostContext(devTools, debugPort, scene);
         var ui = SynchronizationContext.Current!;
         ThreadPool.RegisterWaitForSingleObject(exitSignal, (_, _) => ui.Post(_ => host.ExitThread(), null), null, -1, true);
         Application.Run(host);

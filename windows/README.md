@@ -58,9 +58,17 @@ Click its icon for:
 
 - **Brightness** slider (5–150%), saved
 - **Pause / Resume**, saved
-- **Scene**: all of them in turn, or stay on one (the page also shows each
-  scene's math when it starts, and runs at the Balanced quality preset)
+- The status line says what's playing on each display
+- **Scene**: all of them in turn, or stay on one
+- **Scenes in rotation**: tick scenes on or off (the menu stays open while you
+  do); a scene left out can still be picked under **Scene**. **Put all back**
+  restores them. Changes apply live, without a reload
 - **Next scene**: move on now
+- **Quality**: Battery saver, Balanced (default), High (60 fps, ray-marched
+  shadows and the Mandelbulb) or Maximum (60 fps, up to full resolution);
+  resolution adapts per scene to keep motion smooth
+- **Show the math**: the card with the current scene's equations, and
+  **Show the math when a scene starts** to turn that card on or off
 - **Start at login**: adds or removes `Aether` under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 - **Open Aether in browser**: the hands-on page, `web/aether.html`
@@ -80,10 +88,17 @@ drawing, so a paused wallpaper costs nothing) and resumes afterwards:
 - while the session is locked
 - while battery saver / energy saver is on
 
-Settings are in `%APPDATA%\Aether\settings.json`, the log in
-`%LOCALAPPDATA%\Aether\aether.log`.
+On battery (and not in battery saver) it caps the frame rate at 20 fps, as
+the Linux host does; set `"BatteryFps"` in settings.json to change that, or
+0 for no cap.
 
-`Aether.exe --exit` closes a running copy cleanly.
+Settings are in `%APPDATA%\Aether\settings.json` (brightness, pause, scene,
+quality, math on start, scenes left out, battery fps), the log in
+`%LOCALAPPDATA%\Aether\aether.log`, which also records each scene as it
+starts and quality changes the page makes.
+
+`Aether.exe --exit` closes a running copy cleanly. `Aether.exe --scene physarum`
+stays on one scene for that run without changing the saved choice.
 
 ## How it works
 

@@ -20,8 +20,17 @@ sealed class HostContext : ApplicationContext
         ("bulb", "Mandelbulb"),
     };
 
+    static readonly (string Key, string Title, string Note)[] Qualities =
+    {
+        ("saver", "Battery saver", "30 fps, lower resolution"),
+        ("balanced", "Balanced", "30 fps"),
+        ("high", "High", "60 fps, higher resolution, ray-marched shadows and the Mandelbulb"),
+        ("max", "Maximum", "60 fps, up to full display resolution"),
+    };
+
     readonly Settings settings = Settings.Load();
     readonly bool devTools;
+    readonly string? sceneOverride;   // --scene, for this run only
     readonly int debugPort;
     readonly string webFolder;
     readonly Dictionary<string, WallpaperView> views = new(StringComparer.OrdinalIgnoreCase);
@@ -35,19 +44,23 @@ sealed class HostContext : ApplicationContext
     DesktopLayout? layout;
     List<MonitorInfo> monitors = new();
     HashSet<string> covered = new(StringComparer.OrdinalIgnoreCase);
-    bool locked, saver, building, rebuildAgain, exiting;
+    bool locked, saver, battery, building, rebuildAgain, exiting;
     string lastState = "";
 
     readonly NotifyIcon tray;
     Icon? trayIcon;
     string trayIconKey = "";
-    readonly ToolStripMenuItem statusItem, pauseItem, loginItem, sceneMenu, nextItem;
+    readonly ToolStripMenuItem statusItem, pauseItem, loginItem, sceneMenu, nextItem, rotMenu, rotAllItem,
+        qualityMenu, mathItem, mathAutoItem;
     readonly ToolStripLabel brightLabel;
     readonly TrackBar slider;
 
-    public HostContext(bool devTools, int debugPort)
+    public HostContext(bool devTools, int debugPort, string? scene = null)
     {
         this.devTools = devTools;
+        sceneOverride = scene != null && Scenes.Any(x => x.Key == scene) ? scene : null;
+        if (scene != null && sceneOverride == null) Log.Write($"unknown scene '{scene}'");
+        settings.Skip = Scenes.Select(x => x.Key).Where(settings.Skip.Contains).ToList();   // known keys, menu order
         this.debugPort = debugPort;
         webFolder = FindWebFolder();
         Log.Write("page folder " + webFolder);
@@ -71,11 +84,43 @@ sealed class HostContext : ApplicationContext
         foreach (var (key, title) in Scenes) sceneMenu.DropDownItems.Add(SceneItem(key, title));
         nextItem = new ToolStripMenuItem("Next scene", null, (_, _) => NextScene());
 
+        // switch scenes you don't like out of the rotation (they can still be picked under Scene)
+        rotMenu = new ToolStripMenuItem("Scenes in rotation");
+        foreach (var (key, title) in Scenes)
+        {
+            var item = new ToolStripMenuItem(title) { Tag = key };
+            item.Click += (_, _) => SetInRotation(key, settings.Skip.Contains(key));
+            rotMenu.DropDownItems.Add(item);
+        }
+        rotMenu.DropDownItems.Add(new ToolStripSeparator());
+        rotAllItem = new ToolStripMenuItem("Put all back", null, (_, _) => ResetRotation());
+        rotMenu.DropDownItems.Add(rotAllItem);
+        // stay open while switching several scenes
+        rotMenu.DropDown.Closing += (_, e) =>
+        {
+            if (e.CloseReason == ToolStripDropDownCloseReason.ItemClicked) e.Cancel = true;
+        };
+
+        qualityMenu = new ToolStripMenuItem("Quality");
+        foreach (var (key, title, note) in Qualities)
+        {
+            var item = new ToolStripMenuItem(title) { Tag = key, ToolTipText = note };
+            item.Click += (_, _) => SetQuality(key);
+            qualityMenu.DropDownItems.Add(item);
+        }
+        qualityMenu.DropDownItems.Add(new ToolStripSeparator());
+        qualityMenu.DropDownItems.Add(new ToolStripMenuItem("Resolution adapts per scene to keep motion smooth") { Enabled = false });
+
+        mathItem = new ToolStripMenuItem("Show the math", null, (_, _) => ShowMath());
+        mathAutoItem = new ToolStripMenuItem("Show the math when a scene starts", null, (_, _) => ToggleMathAuto());
+
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
             statusItem, new ToolStripSeparator(), brightLabel, sliderHost, new ToolStripSeparator(),
-            pauseItem, sceneMenu, nextItem, loginItem, new ToolStripSeparator(),
+            pauseItem, sceneMenu, rotMenu, nextItem, qualityMenu, new ToolStripSeparator(),
+            mathItem, mathAutoItem, new ToolStripSeparator(),
+            loginItem, new ToolStripSeparator(),
             new ToolStripMenuItem("Open Aether in browser", null, (_, _) => OpenPage()),
             new ToolStripMenuItem("Reload", null, (_, _) => Reload()),
             new ToolStripMenuItem("Open log folder", null, (_, _) => OpenFolder(Log.Folder)),
@@ -113,6 +158,8 @@ sealed class HostContext : ApplicationContext
         saveTimer.Tick += (_, _) => { saveTimer.Stop(); settings.Save(); };
 
         saver = PowerSaving();
+        battery = OnBattery();
+        if (battery && settings.BatteryFps > 0) Log.Write($"on battery: {settings.BatteryFps} fps cap");
         pollTimer.Start();
         UpdateMenu();
         ScheduleRebuild(1);
@@ -180,6 +227,8 @@ sealed class HostContext : ApplicationContext
                 {
                     v = new WallpaperView(m, lay);
                     v.Lost += OnViewLost;
+                    v.SceneChanged += _ => UpdateMenu();
+                    v.SetFps(FpsCap());
                     views[m.Device] = v;
                     Log.Write($"{m.Device}: {m.Bounds.Width}x{m.Bounds.Height} at {m.Bounds.X},{m.Bounds.Y}");
                     await v.StartAsync(env, webFolder, PageUrl(), devTools);
@@ -223,7 +272,22 @@ sealed class HostContext : ApplicationContext
     string PageUrl()
     {
         var url = $"{WallpaperView.Origin}wallpaper.html?level={settings.Brightness.ToString("0.##", CultureInfo.InvariantCulture)}";
-        return settings.Scene is { } s ? url + "&aether=" + s : url;
+        if ((sceneOverride ?? settings.Scene) is { } s) url += "&aether=" + s;
+        url += "&quality=" + settings.Quality;
+        if (!settings.MathOnStart) url += "&math=0";
+        if (settings.Skip.Count > 0) url += "&skip=" + string.Join(",", settings.Skip);
+        int fps = FpsCap();
+        if (fps > 0) url += "&fps=" + fps;
+        return url;
+    }
+
+    int FpsCap() => battery ? settings.BatteryFps : 0;
+
+    void NavigateAll()
+    {
+        var url = PageUrl();
+        foreach (var v in views.Values) v.Navigate(url);
+        UpdateMenu();
     }
 
     static string FindWebFolder()
@@ -256,6 +320,13 @@ sealed class HostContext : ApplicationContext
     {
         bool s = PowerSaving();
         if (s != saver) { saver = s; Log.Write(s ? "energy saver on" : "energy saver off"); }
+        bool b = OnBattery();
+        if (b != battery)
+        {
+            battery = b;
+            Log.Write(b ? "power: battery" + (settings.BatteryFps > 0 ? $", {settings.BatteryFps} fps cap" : "") : "power: mains");
+            foreach (var v in views.Values) v.SetFps(FpsCap());
+        }
         if (layout != null && !layout.IsAlive) { Log.Write("desktop window gone"); DisposeViews(); layout = null; ScheduleRebuild(500); }
         Evaluate();
     }
@@ -300,10 +371,56 @@ sealed class HostContext : ApplicationContext
         {
             settings.Scene = scene;
             settings.Save();
-            foreach (var v in views.Values) v.Navigate(PageUrl());
-            UpdateMenu();
+            Log.Write("scene: " + (scene ?? "all"));
+            NavigateAll();
         };
         return item;
+    }
+
+    void SetInRotation(string key, bool on)
+    {
+        settings.Skip.Remove(key);
+        if (!on) settings.Skip.Add(key);
+        settings.Skip = Scenes.Select(x => x.Key).Where(settings.Skip.Contains).ToList();   // menu order
+        settings.Save();
+        SendSkip();
+    }
+
+    void ResetRotation()
+    {
+        settings.Skip.Clear();
+        settings.Save();
+        SendSkip();
+    }
+
+    void SendSkip()
+    {
+        Log.Write("left out of the rotation: " + (settings.Skip.Count > 0 ? string.Join(", ", settings.Skip) : "none"));
+        var json = System.Text.Json.JsonSerializer.Serialize(settings.Skip);
+        foreach (var v in views.Values) v.Send("aether-skip", json);
+        UpdateMenu();
+    }
+
+    void SetQuality(string key)
+    {
+        if (key == settings.Quality) return;
+        settings.Quality = key;
+        settings.Save();
+        Log.Write("quality: " + key);
+        NavigateAll();   // the page reads its preset when it loads
+    }
+
+    void ShowMath()
+    {
+        foreach (var v in views.Values) v.Send("aether-show-math");
+    }
+
+    void ToggleMathAuto()
+    {
+        settings.MathOnStart = !settings.MathOnStart;
+        settings.Save();
+        foreach (var v in views.Values) v.Send("aether-math-auto", settings.MathOnStart ? "true" : "false");
+        UpdateMenu();
     }
 
     void NextScene()
@@ -342,7 +459,9 @@ sealed class HostContext : ApplicationContext
             : c == n ? $"Paused (covered by a {(n == 1 ? "window" : "window on every display")})"
             : c > 0 ? $"Running on {n - c} of {n} displays"
             : n == 1 ? "Running" : $"Running on {n} displays";
-        statusItem.Text = status;
+        var showing = views.Where(kv => !covered.Contains(kv.Key)).OrderBy(kv => kv.Key)
+            .Select(kv => kv.Value.SceneName).OfType<string>().Distinct().ToList();
+        statusItem.Text = all == null && c < n && showing.Count > 0 ? status + " · " + string.Join(", ", showing) : status;
         pauseItem.Text = settings.Paused ? "Resume" : "Pause";
         brightLabel.Text = $"Brightness  {Math.Round(settings.Brightness * 100)}%";
         string sceneTitle = "All, in turn";
@@ -353,6 +472,27 @@ sealed class HostContext : ApplicationContext
                 if (mi.Checked && mi.Tag != null) sceneTitle = mi.Text ?? "";
             }
         sceneMenu.Text = "Scene: " + sceneTitle;
+
+        int left = 0;
+        foreach (ToolStripItem i in rotMenu.DropDownItems)
+            if (i is ToolStripMenuItem mi && mi.Tag is string key)
+            {
+                mi.Checked = !settings.Skip.Contains(key);
+                if (!mi.Checked) left++;
+            }
+        rotMenu.Text = left > 0 ? $"Scenes in rotation: {Scenes.Length - left} of {Scenes.Length}" : "Scenes in rotation: all";
+        rotAllItem.Enabled = left > 0;
+
+        string qualityTitle = "Balanced";
+        foreach (ToolStripItem i in qualityMenu.DropDownItems)
+            if (i is ToolStripMenuItem mi && mi.Tag is string key)
+            {
+                mi.Checked = key == settings.Quality;
+                if (mi.Checked) qualityTitle = mi.Text ?? "";
+            }
+        qualityMenu.Text = "Quality: " + qualityTitle;
+        mathAutoItem.Checked = settings.MathOnStart;
+        mathItem.Enabled = n > 0 && all == null;
         nextItem.Enabled = n > 0 && all == null;
         SetTrayIcon(all != null || (n > 0 && c == n));
         var tip = "Aether: " + status;
