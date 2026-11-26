@@ -6,6 +6,12 @@
 
 **A GPU live wallpaper of particles, fluids and fractals that never repeats.**
 
+[![Latest release](https://img.shields.io/github/v/release/jtalbott22/wallpaper?label=release&color=78e2ff&labelColor=0b0f14)](https://github.com/jtalbott22/wallpaper/releases/latest)
+[![MIT license](https://img.shields.io/github/license/jtalbott22/wallpaper?color=7cffb2&labelColor=0b0f14)](LICENSE)
+[![Linux · macOS · Windows · Web](https://img.shields.io/badge/runs_on-Linux_·_macOS_·_Windows_·_Web-c3b5ff?labelColor=0b0f14)](#quick-start)
+[![WebGL2](https://img.shields.io/badge/engine-WebGL2-ffb86b?labelColor=0b0f14)](web/aether-bg.js)
+[![Try it in your browser](https://img.shields.io/badge/try_it-in_your_browser-78e2ff?labelColor=0b0f14)](https://joshuaallentalbott.com/aether.html)
+
 <img src="docs/screenshots/hero.webp" alt="Aether drifting from Particle Life into Silk, Reaction and Galaxy" width="720">
 
 Sixteen real-time simulations on your graphics chip, dissolving slowly from
@@ -13,7 +19,8 @@ one into the next, behind your windows on Ubuntu / GNOME, macOS and Windows,
 and in any browser.
 
 **Linux, Windows, macOS and any browser, [in one evening](#act-3-everywhere-in-one-evening).**
-[Try it in your browser →](https://joshuaallentalbott.com/aether.html)
+[Try it in your browser →](https://joshuaallentalbott.com/aether.html) ·
+[Download the latest release →](https://github.com/jtalbott22/wallpaper/releases/latest)
 
 [What "Aether" means](#what-aether-means) ·
 [Scenes](#the-scenes) ·
